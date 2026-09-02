@@ -780,6 +780,8 @@ resample <- function(in_raster = NOFILE,
 #'
 #' @param refDTM Character: reference DTM (full path).
 #' @param alignDTM Character: DTM to align to the reference.
+#' @param refGrnd Character: Reference ground-density raster.
+#' @param alignGrnd Character: Align ground-density raster.
 #' @param refDSM Character: reference DSM (optional).
 #' @param alignDSM Character: DSM to align (optional).
 #' @param iterations Numeric: number of iterations used to solve for the shift.
@@ -805,6 +807,8 @@ resample <- function(in_raster = NOFILE,
 #' @export
 align <- function(refDTM = NOFILE,
                   alignDTM = NOFILE,
+                  refGrnd = NOFILE,
+                  alignGrnd = NOFILE,
                   refDSM = NOFILE,
                   alignDSM = NOFILE,
                   iterations = 5,
@@ -838,9 +842,7 @@ align <- function(refDTM = NOFILE,
   check$directory(executable_dir, "executable_dir")
   check$report()
 
-  # The "TerrainWorksUtils::" prefixes are dropped: this file is part of that
-  # package, and a package cannot reference its own namespace before install.
-  input_file <- align_input(refDTM, alignDTM, refDSM, alignDSM,
+  input_file <- align_input(refDTM, alignDTM, refGrnd, alignGrnd, refDSM, alignDSM,
                             iterations, k, dampener, outDTM,
                             tileNx, tileNy, overlap, radius,
                             nslope, maxSlope, nAzimuth,

@@ -1552,6 +1552,8 @@ accum_input <- function(dem,
 #'
 #' @param refDTM Reference DTM (full path).
 #' @param alignDTM DTM to be aligned to the reference (full path).
+#' @param refGrnd ground-return density raster for the reference dataset.
+#' @param alignGrnd ground-return density raster for the align dataset.
 #' @param refDSM Reference surface-height raster (optional).
 #' @param alignDSM DSM to align (optional).
 #' @param iterations Number of iterations used to solve for the shift.
@@ -1576,6 +1578,8 @@ accum_input <- function(dem,
 #' @export
 align_input <- function(refDTM,
                         alignDTM,
+                        refGrnd = NOFILE,
+                        alignGrnd = NOFILE,
                         refDSM = NOFILE,
                         alignDSM = NOFILE,
                         iterations,
@@ -1597,12 +1601,14 @@ align_input <- function(refDTM,
 
   writer <- input_writer("align", scratch_dir, "input_align.txt", overwrite)
 
-  # --- Inputs. The two DSM rasters are optional and are skipped when the
+  # --- Inputs. The two ground density and DSM rasters are optional and are skipped when the
   #     caller leaves them at NOFILE. ------------------------------------
   writer$keyword("REFERENCE DEM",
                  normalize_raster_path(refDTM, must_exist = TRUE))
   writer$keyword("DEM TO ALIGN",
                  normalize_raster_path(alignDTM, must_exist = TRUE))
+  writer$optional("REFERENCE DENSITY RASTER", normalize_raster_path(refGrnd))
+  writer$optional("ALIGN DENSITY RASTER", normalize_raster_path(alignGrnd))
   writer$optional("REFERENCE DSM", normalize_raster_path(refDSM))
   writer$optional("DSM TO ALIGN",  normalize_raster_path(alignDSM))
 

@@ -7,6 +7,8 @@
 align(
   refDTM = NOFILE,
   alignDTM = NOFILE,
+  refGrnd = NOFILE,
+  alignGrnd = NOFILE,
   refDSM = NOFILE,
   alignDSM = NOFILE,
   iterations = 5,
@@ -32,6 +34,10 @@ align(
 \item{refDTM}{Character: reference DTM (full path).}
 
 \item{alignDTM}{Character: DTM to align to the reference.}
+
+\item{refGrnd}{Character: Reference ground-density raster.}
+
+\item{alignGrnd}{Character: Align ground-density raster.}
 
 \item{refDSM}{Character: reference DSM (optional).}
 

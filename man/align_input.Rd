@@ -7,6 +7,8 @@
 align_input(
   refDTM,
   alignDTM,
+  refGrnd = NOFILE,
+  alignGrnd = NOFILE,
   refDSM = NOFILE,
   alignDSM = NOFILE,
   iterations,
@@ -31,6 +33,10 @@ align_input(
 \item{refDTM}{Reference DTM (full path).}
 
 \item{alignDTM}{DTM to be aligned to the reference (full path).}
+
+\item{refGrnd}{ground-return density raster for the reference dataset.}
+
+\item{alignGrnd}{ground-return density raster for the align dataset.}
 
 \item{refDSM}{Reference surface-height raster (optional).}
 
