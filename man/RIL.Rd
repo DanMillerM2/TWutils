@@ -2,7 +2,7 @@
 % Please edit documentation in R/wrappers.R
 \name{RIL}
 \alias{RIL}
-\title{--- RIL, Delineate a channel network and its riparian landforms ---}
+\title{---  , Delineate a channel network and its riparian landforms ---}
 \usage{
 RIL(
   dem = NOFILE,
@@ -24,8 +24,8 @@ written here.}
 optional input and output rasters, the road shapefile, and
 \code{attribute_list}.}
 
-\item{executable_dir}{Character: directory holding RIL.exe. Defaults to
-get_executable_path().}
+\item{executable_dir}{Character: directory holding RIL.exe. There is no
+default location: it must always be supplied.}
 }
 \value{
 A \code{SpatRaster} of the output RIL classes.

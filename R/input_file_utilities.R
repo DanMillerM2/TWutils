@@ -1353,6 +1353,35 @@ get_attribute_list <- function(infile,
 }
 
 
+#' Read an ATTRIBUTE LIST block straight from a file path
+#'
+#' A thin wrapper around [get_input_file()] + [get_attribute_list()] for
+#' callers that only have a path, not an already-loaded input-file tibble --
+#' e.g. a driver script that lets its own parameter file point at a *separate*
+#' text file holding an arbitrary, hand-edited `ATTRIBUTE LIST:` / `END LIST:`
+#' block, so the attribute set to compute isn't hardcoded to
+#' [ril_default_attributes()] or any other fixed R-side list.
+#'
+#' The file need not be a complete RIL/netrace input file: anything outside
+#' the `ATTRIBUTE LIST:` ... `END LIST:` block is ignored, so a file holding
+#' nothing but that block works fine.
+#'
+#' @param path Path to a text file containing an `ATTRIBUTE LIST:` block.
+#' @param start_keyword,end_pattern Passed through to [get_attribute_list()].
+#'
+#' @return A list of [attribute_spec()] objects, empty if the file has no
+#'   attribute list.
+#' @seealso [get_attribute_list()], [RIL_input()]
+#' @export
+read_attribute_list_file <- function(path,
+                                     start_keyword = "ATTRIBUTE LIST",
+                                     end_pattern = "^END( ATTRIBUTE)? LIST$") {
+  get_attribute_list(get_input_file(path),
+                     start_keyword = start_keyword,
+                     end_pattern = end_pattern)
+}
+
+
 #' Parse a RASTER LIST block out of an input file
 #'
 #' @param infile A tibble created by [get_input_file()].
@@ -2664,21 +2693,35 @@ ril_default_attributes <- function(precip_raster = NOFILE) {
 #'   square meters before and after hollow processing.
 #' @param gorge_gradient Named vector: PRIMARY, SECONDARY, DIF1 and DIF2
 #'   gradient thresholds for inner gorges.
+#' @param slope_thresholds Named vector SLOPE and STEEP: upslope-gradient
+#'   thresholds classifying the remaining hillslope into "other", non-steep
+#'   and steep terrain.
+#' @param curve_thresholds Named vector CONVERGENT and DIVERGENT: tangential
+#'   curvature thresholds splitting hillslope terrain into convergent,
+#'   divergent and planar classes.
 #' @param edge_smoothing_iterations Smoothing iterations applied to all output
 #'   polygon edges.
 #' @param road_shapefile Input road polyline shapefile (optional).
 #' @param road_buffer Buffer in meters around roads. Used only when a road
 #'   shapefile is supplied.
-#' @param in_closest_node,in_dist_to_channel,in_drainage_wing,in_valley_floor,in_upgrad,in_downgrad,in_tangential,in_plan
+#' @param in_closest_node,in_dist_to_channel,in_drainage_wing,in_valley_floor,in_upgrad,in_downgrad,in_grad,in_tangential,in_plan,in_prof
 #'   Optional precomputed input rasters. Each pairs with the matching `out_`
-#'   argument from a previous run.
-#' @param out_closest_node,out_dist_to_channel,out_drainage_wing,out_valley_floor,out_upgrad,out_downgrad,out_tangential,out_plan
+#'   argument from a previous run. RIL only skips recomputing elevation
+#'   derivatives when *all six* of in_upgrad, in_downgrad, in_grad,
+#'   in_tangential, in_plan and in_prof are supplied; partial sets are
+#'   ignored and every derivative is recalculated.
+#' @param out_closest_node,out_dist_to_channel,out_drainage_wing,out_valley_floor,out_upgrad,out_downgrad,out_grad,out_tangential,out_plan,out_prof
 #'   Optional intermediate rasters to write out for reuse.
 #' @param out_nodes Optional output node point shapefile carrying the
 #'   attributes.
 #' @param out_zero_order Optional output zero-order basin raster.
 #' @param attribute_list List of [attribute_spec()] objects to compute for each
 #'   node. Defaults to [ril_default_attributes()].
+#' @param use_ltd If FALSE, write the USE STANDARD D8 flag so channel-node
+#'   drainage wings are built with standard D8 flow paths rather than D8-LTD.
+#' @param debug If TRUE, write the DEBUG flag. RIL then writes extra
+#'   diagnostic rasters (upgrad, downgrad, node ID) to hardcoded paths under
+#'   `c:\\temp`, which must already exist.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
 #'
 #' @return The input file path, invisibly.
@@ -2686,7 +2729,7 @@ ril_default_attributes <- function(precip_raster = NOFILE) {
 RIL_input <- function(dem,
                       scratch_dir,
                       out_RIL,
-                      radius = 30,
+                      radius = 7.5,
                       closest_node = c(`NUM WIDTHS` = 0,
                                        `MAX RADIUS` = 250,
                                        `MIN RADIUS` = 250),
@@ -2734,19 +2777,25 @@ RIL_input <- function(dem,
                       in_valley_floor = NOFILE,
                       in_upgrad = NOFILE,
                       in_downgrad = NOFILE,
+                      in_grad = NOFILE,
                       in_tangential = NOFILE,
                       in_plan = NOFILE,
+                      in_prof = NOFILE,
                       out_closest_node = NOFILE,
                       out_dist_to_channel = NOFILE,
                       out_drainage_wing = NOFILE,
                       out_valley_floor = NOFILE,
                       out_upgrad = NOFILE,
                       out_downgrad = NOFILE,
+                      out_grad = NOFILE,
                       out_tangential = NOFILE,
                       out_plan = NOFILE,
+                      out_prof = NOFILE,
                       out_nodes = NOFILE,
                       out_zero_order = NOFILE,
                       attribute_list = ril_default_attributes("c:\\work\\data\\postmortem\\prism_wasp_m"),
+                      use_ltd = TRUE,
+                      debug = FALSE,
                       overwrite = TRUE) {
 
   writer <- input_writer("RIL", scratch_dir, overwrite = overwrite)
@@ -2756,6 +2805,8 @@ RIL_input <- function(dem,
   writer$keyword("SCRATCH DIRECTORY", normalize_file_path(scratch_dir))
   writer$keyword("RADIUS", radius)
   write_keyword_group(writer, "CLOSEST NODE RASTER", closest_node)
+  if (!isTRUE(use_ltd)) writer$keyword("USE STANDARD D8")
+  if (isTRUE(debug)) writer$keyword("DEBUG")
 
   # --- Channel initiation -------------------------------------------------
   writer$line("")
@@ -2807,7 +2858,7 @@ RIL_input <- function(dem,
   # --- Hillslope ---------------------------------------------------------
   writer$line("")
   writer$line("# Hillslope parameters")
-  write_keyword_group(writer, "SLOPE UPGRAD THRESHOLDS",
+  write_keyword_group(writer, "SLOPE THRESHOLDS",
                       slope_thresholds, indent = 2L)
   write_keyword_group(writer, "CURVE THRESHOLDS",
                       curve_thresholds, indent = 2L)
@@ -2831,8 +2882,10 @@ RIL_input <- function(dem,
     "INPUT VALLEY FLOOR RASTER"          = in_valley_floor,
     "INPUT UPGRAD RASTER"                = in_upgrad,
     "INPUT DOWNGRAD RASTER"              = in_downgrad,
+    "INPUT GRADIENT RASTER"              = in_grad,
     "INPUT TANGENTIAL CURVATURE RASTER"  = in_tangential,
-    "INPUT PLAN CURVATURE RASTER"        = in_plan
+    "INPUT PLAN CURVATURE RASTER"        = in_plan,
+    "INPUT PROFILE CURVATURE RASTER"     = in_prof
   )
   for (keyword in names(optional_inputs)) {
     writer$optional(keyword,
@@ -2851,8 +2904,12 @@ RIL_input <- function(dem,
     "OUTPUT VALLEY FLOOR RASTER"         = out_valley_floor,
     "OUTPUT UPGRAD RASTER"               = out_upgrad,
     "OUTPUT DOWNGRAD RASTER"             = out_downgrad,
+    "OUTPUT GRADIENT RASTER"             = out_grad,
     "OUTPUT TANGENTIAL CURVATURE RASTER" = out_tangential,
     "OUTPUT PLAN CURVATURE RASTER"       = out_plan,
+    # NB: RIL.f90 abbreviates this keyword to "PROF" (unlike the matching
+    # "INPUT PROFILE CURVATURE RASTER" keyword above, which spells it out).
+    "OUTPUT PROF CURVATURE RASTER"       = out_prof,
     "OUTPUT ZERO ORDER BASINS"           = out_zero_order
   )
   for (keyword in names(optional_outputs)) {

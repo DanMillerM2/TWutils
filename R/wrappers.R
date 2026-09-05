@@ -1322,7 +1322,7 @@ quantiles <- function(in_raster = NOFILE,
 }
 
 
-#' --- RIL, Delineate a channel network and its riparian landforms ---
+#' ---  , Delineate a channel network and its riparian landforms ---
 #'
 #' A wrapper for Fortran program RIL. RIL finds channel initiation points on a
 #' DEM, traces the channel network downstream, and classifies the terrain
@@ -1345,8 +1345,8 @@ quantiles <- function(in_raster = NOFILE,
 #' @param ... Further arguments passed to [RIL_input()]: thresholds, the
 #'   optional input and output rasters, the road shapefile, and
 #'   `attribute_list`.
-#' @param executable_dir Character: directory holding RIL.exe. Defaults to
-#'   get_executable_path().
+#' @param executable_dir Character: directory holding RIL.exe. There is no
+#'   default location: it must always be supplied.
 #'
 #' @return A \code{SpatRaster} of the output RIL classes.
 #'

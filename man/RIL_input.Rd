@@ -8,7 +8,7 @@ RIL_input(
   dem,
   scratch_dir,
   out_RIL,
-  radius = 30,
+  radius = 7.5,
   closest_node = c(`NUM WIDTHS` = 0, `MAX RADIUS` = 250, `MIN RADIUS` = 250),
   as2_threshold = 1000,
   plan_curvature_threshold = 0.005,
@@ -42,20 +42,26 @@ RIL_input(
   in_valley_floor = NOFILE,
   in_upgrad = NOFILE,
   in_downgrad = NOFILE,
+  in_grad = NOFILE,
   in_tangential = NOFILE,
   in_plan = NOFILE,
+  in_prof = NOFILE,
   out_closest_node = NOFILE,
   out_dist_to_channel = NOFILE,
   out_drainage_wing = NOFILE,
   out_valley_floor = NOFILE,
   out_upgrad = NOFILE,
   out_downgrad = NOFILE,
+  out_grad = NOFILE,
   out_tangential = NOFILE,
   out_plan = NOFILE,
+  out_prof = NOFILE,
   out_nodes = NOFILE,
   out_zero_order = NOFILE,
   attribute_list =
     ril_default_attributes("c:\\\\work\\\\data\\\\postmortem\\\\prism_wasp_m"),
+  use_ltd = TRUE,
+  debug = FALSE,
   overwrite = TRUE
 )
 }
@@ -119,6 +125,14 @@ square meters before and after hollow processing.}
 \item{gorge_gradient}{Named vector: PRIMARY, SECONDARY, DIF1 and DIF2
 gradient thresholds for inner gorges.}
 
+\item{slope_thresholds}{Named vector SLOPE and STEEP: upslope-gradient
+thresholds classifying the remaining hillslope into "other", non-steep
+and steep terrain.}
+
+\item{curve_thresholds}{Named vector CONVERGENT and DIVERGENT: tangential
+curvature thresholds splitting hillslope terrain into convergent,
+divergent and planar classes.}
+
 \item{edge_smoothing_iterations}{Smoothing iterations applied to all output
 polygon edges.}
 
@@ -127,10 +141,13 @@ polygon edges.}
 \item{road_buffer}{Buffer in meters around roads. Used only when a road
 shapefile is supplied.}
 
-\item{in_closest_node, in_dist_to_channel, in_drainage_wing, in_valley_floor, in_upgrad, in_downgrad, in_tangential, in_plan}{Optional precomputed input rasters. Each pairs with the matching \code{out_}
-argument from a previous run.}
+\item{in_closest_node, in_dist_to_channel, in_drainage_wing, in_valley_floor, in_upgrad, in_downgrad, in_grad, in_tangential, in_plan, in_prof}{Optional precomputed input rasters. Each pairs with the matching \code{out_}
+argument from a previous run. RIL only skips recomputing elevation
+derivatives when \emph{all six} of in_upgrad, in_downgrad, in_grad,
+in_tangential, in_plan and in_prof are supplied; partial sets are
+ignored and every derivative is recalculated.}
 
-\item{out_closest_node, out_dist_to_channel, out_drainage_wing, out_valley_floor, out_upgrad, out_downgrad, out_tangential, out_plan}{Optional intermediate rasters to write out for reuse.}
+\item{out_closest_node, out_dist_to_channel, out_drainage_wing, out_valley_floor, out_upgrad, out_downgrad, out_grad, out_tangential, out_plan, out_prof}{Optional intermediate rasters to write out for reuse.}
 
 \item{out_nodes}{Optional output node point shapefile carrying the
 attributes.}
@@ -139,6 +156,13 @@ attributes.}
 
 \item{attribute_list}{List of \code{\link[=attribute_spec]{attribute_spec()}} objects to compute for each
 node. Defaults to \code{\link[=ril_default_attributes]{ril_default_attributes()}}.}
+
+\item{use_ltd}{If FALSE, write the USE STANDARD D8 flag so channel-node
+drainage wings are built with standard D8 flow paths rather than D8-LTD.}
+
+\item{debug}{If TRUE, write the DEBUG flag. RIL then writes extra
+diagnostic rasters (upgrad, downgrad, node ID) to hardcoded paths under
+\verb{c:\\\\temp}, which must already exist.}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
 }
