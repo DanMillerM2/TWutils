@@ -15,16 +15,7 @@
 
 #' Collect argument problems and report them all at once
 #'
-#' The original file checked arguments with a repeated pattern:
-#'
-#'     if (radius == 0.) { print("Radius not specified"); err <- -1 }
-#'
-#' and then, many lines later, `if (err < 0) stop("Error with input
-#' arguments")`. That prints the detail and errors with the summary, so the
-#' two halves can end up in different places in a log, and only the summary
-#' is catchable by the caller.
-#'
-#' This accumulates the problems instead and raises one error naming all of
+#' This accumulates the problems and raises one error naming all of
 #' them, so a caller fixing a call sees everything wrong with it in one pass.
 #'
 #' @return A list of check functions plus `report()`, which raises the error.
@@ -34,7 +25,7 @@ argument_checker <- function() {
   problems <- character(0)
   note <- function(message_text) problems <<- c(problems, message_text)
 
-  # A file that must already exist. Raster arguments are normally given
+  # Check that a required file already exist. Raster arguments are normally given
   # without an extension, because that is the form the Fortran programs
   # resolve for themselves, so the bare name and every RASTER_EXTENSIONS
   # variant of it all count as a match.
@@ -70,8 +61,9 @@ argument_checker <- function() {
     invisible(NULL)
   }
 
-  # A numeric argument that must be present and in range. The original used
-  # sentinel values (0, -9999) to mean "not supplied", so the same test
+  # A numeric argument that must be present and in range. Most arguments are
+  # assigned at declaration with a nodata value (-9999), so
+  # sentinel values (0, -9999) mean "not supplied" and the same test
   # covers both "missing" and "out of bounds".
   check_number <- function(value, label, minimum = 0, allow_minimum = FALSE) {
     is_unusable <- !is.numeric(value) || length(value) == 0L || is.na(value[1]) ||
@@ -170,9 +162,6 @@ keyword_line_numbers <- function(input_lines, pattern) {
 
 
 #' --- Require that an input file contains a set of keywords ---
-#'
-#' Replaces the `dem_found` / `dir_found` / `scale_found` flag variables and
-#' the long if/else-if chain that set them, which appeared in five functions.
 #'
 #' @param input_lines A tibble from get_input_file().
 #' @param patterns Character vector of keyword patterns that must be present.
@@ -467,6 +456,112 @@ bldgrds_nochannels <- function(input_file = NOFILE,
   if (run_bldgrds) run_program("bldgrds", input_file, executable_dir)
 
   terra::rast(raster)
+}
+
+
+#' --- bldgrds, Build the channel network from a DEM ---
+#'
+#' A wrapper for Fortran program bldgrds. bldgrds computes flow direction and
+#' D-infinity contributing area for a DEM, then traces the channel network
+#' downstream and writes it out as a node-list database -- consumed by
+#' downstream programs such as netrace -- plus, optionally, a node point
+#' shapefile. Requesting that shapefile (via `node_shapefile`, a
+#' [bldgrds_input()] argument) requires an `ATTRIBUTE LIST` block in the
+#' input file; [bldgrds_input()] supplies one automatically -- see its
+#' `attribute_list` argument and [bldgrds_default_attributes()].
+#'
+#' Unlike [elev_deriv()], [contributing_area()] and [bldgrds_nochannels()]
+#' above, there is no single output raster to read back afterwards: bldgrds'
+#' products are the node-list database and whatever optional rasters/
+#' shapefiles were requested via [bldgrds_input()]. This wrapper therefore
+#' only supports build-and-run mode, the same as [RIL()], [huntLS()],
+#' [LShunter()], [LS_poly()] and [samplePoints()]: there is no existing-
+#' input-file mode and no read-only mode.
+#'
+#' Every tuning parameter beyond the two named here (channel-initiation
+#' thresholds, D8 weighting, the road-crossing-excavation and water-mask
+#' options, the node point shapefile request, and the attribute list) is
+#' passed straight through to [bldgrds_input()], which documents them.
+#'
+#' @param dem Character: file name (full path) of the DEM.
+#' @param scratch_dir Character: scratch directory. The bldgrds input file is
+#'   written here.
+#' @param ... Further arguments passed to [bldgrds_input()].
+#' @param executable_dir Character: directory holding bldgrds.exe. There is
+#'   no default location: it must always be supplied.
+#'
+#' @return 0 on success. Stops with a message on any failure.
+#'
+#' @seealso [bldgrds_input()], [bldgrds_default_attributes()],
+#'   [bldgrds_nochannels()]
+#' @export
+bldgrds <- function(dem = NOFILE,
+                    scratch_dir = NOFILE,
+                    ...,
+                    executable_dir = NULL) {
+
+  check <- argument_checker()
+  check$input_file(dem, "dem")
+  check$directory(scratch_dir, "scratch_dir")
+  check$report()
+
+  input_file <- bldgrds_input(dem = dem,
+                              scratch_dir = scratch_dir,
+                              ...)
+
+  run_program("bldgrds", input_file, executable_dir)
+  0L
+}
+
+
+#' --- bldgrds_enforce, Enforce an existing channel network onto a DEM ---
+#'
+#' A wrapper for Fortran program bldgrds, run in its "enforce an existing
+#' channel network" mode: rather than initiating new channels from area-
+#' slope/plan-curvature/local-relief thresholds (see [bldgrds()]), it
+#' excavates a previously-mapped channel-network polyline shapefile
+#' (`channel_mask`) into the DEM and traces the node-list database from that
+#' network alone -- `NO NEW CHANNELS` is always written, precluding any
+#' channel initiation outside `channel_mask`.
+#'
+#' Every tuning parameter beyond the three named here is passed straight
+#' through to [bldgrds_enforce_input()], which documents them and supplies
+#' defaults matching a working reference run (Skykomish project).
+#'
+#' @param dem Character: file name (full path) of the DEM.
+#' @param scratch_dir Character: scratch directory. The bldgrds input file is
+#'   written here.
+#' @param channel_mask Character: existing channel-network polyline
+#'   shapefile to enforce.
+#' @param ... Further arguments passed to [bldgrds_enforce_input()]:
+#'   excavation depth/radius, the node point shapefile request, optional
+#'   drainage-wing/HAND/TWI rasters, and the attribute list.
+#' @param executable_dir Character: directory holding bldgrds.exe. There is
+#'   no default location: it must always be supplied.
+#'
+#' @return 0 on success. Stops with a message on any failure.
+#'
+#' @seealso [bldgrds_enforce_input()], [bldgrds()], [bldgrds_nochannels()]
+#' @export
+bldgrds_enforce <- function(dem = NOFILE,
+                            scratch_dir = NOFILE,
+                            channel_mask = NOFILE,
+                            ...,
+                            executable_dir = NULL) {
+
+  check <- argument_checker()
+  check$input_file(dem, "dem")
+  check$directory(scratch_dir, "scratch_dir")
+  check$input_file(channel_mask, "channel_mask", extensions = "shp")
+  check$report()
+
+  input_file <- bldgrds_enforce_input(dem = dem,
+                                      scratch_dir = scratch_dir,
+                                      channel_mask = channel_mask,
+                                      ...)
+
+  run_program("bldgrds", input_file, executable_dir)
+  0L
 }
 
 

@@ -333,6 +333,8 @@ INPUT_FILE_NAMES <- c(
   "quantiles"          = "input_quantiles.txt",
   "distanceToRoad"     = "input_distanceToRoad.txt",
   "bldgrds_nochannels" = "input_bldgrds_nochannels.txt",
+  "bldgrds"            = "input_bldgrds.txt",
+  "bldgrds_enforce"    = "input_bldgrds_enforce.txt",
   "PFA_debris_flow"    = "input_PFA_debris_flow.txt",
   "LocalRelief"        = "input_DEV.txt",
   "resample"           = "input_resample.txt",
@@ -2335,6 +2337,400 @@ bldgrds_nochannels_input <- function(dem,
   writer$keyword("OUTPUT FLOW ACCUMULATION RASTER",
                  normalize_file_path(out_raster))
   writer$keyword("SCRATCH DIRECTORY", normalize_file_path(scratch_dir))
+
+  invisible(writer$file_path)
+}
+
+
+#' The attribute list bldgrds falls back to when none is supplied
+#'
+#' bldgrds builds a channel node-list database (and, if requested, a node
+#' point shapefile) via the same `attributeList` machinery RIL uses
+#' (`ChannelNode_Module.f90`). This reproduces the attribute block of a
+#' working Sprague-River reference run, giving each node its elevation and
+#' contributing area, then, when a precipitation raster is supplied, chaining
+#' mean annual precipitation into mean annual flow and published regional
+#' hydraulic-geometry equations for channel width and depth -- the same
+#' pattern [ril_default_attributes()] uses for RIL, with different citations.
+#'
+#' @param precip_raster Mean annual precipitation raster. When absent, the
+#'   four dependent attributes (mean annual precipitation and flow, width,
+#'   depth) are omitted.
+#'
+#' @return A list of [attribute_spec()] objects.
+#' @references
+#' Lorenson, Marcus and Roberts, 1994 (mean annual flow).
+#' White, McCullough, Justice and Kelsey, 2011 (channel width and depth).
+#' @export
+bldgrds_default_attributes <- function(precip_raster = NOFILE) {
+
+  attribute_list <- list(
+    attribute_spec("ELEVATION"),
+    attribute_spec("CONTRIBUTING AREA", output_field = "AREA_SQKM")
+  )
+
+  if (is_missing_path(precip_raster)) return(attribute_list)
+
+  c(attribute_list, list(
+
+    attribute_spec("MEAN ANNUAL PRECIP",
+                   file = precip_raster,
+                   output_field = "MNANPRC_M",
+                   units = "mm",
+                   replace = TRUE),
+
+    # Lorenson, Marcus and Roberts, 1994
+    attribute_spec("MEAN ANNUAL FLOW",
+                   output_field = "MEANANNCMS",
+                   replace = TRUE,
+                   terms = equation_term(0.00537986,
+                                         AREA_SQKM = 1.176471,
+                                         MNANPRC_M = 2.062353663)),
+
+    # White, McCullough, Justice, and Kelsey, 2011
+    attribute_spec("WIDTH",
+                   output_field = "WIDTH_M",
+                   replace = TRUE,
+                   terms = equation_term(1.5662, AREA_SQKM = 0.385)),
+
+    attribute_spec("DEPTH",
+                   output_field = "DEPTH_M",
+                   replace = TRUE,
+                   terms = equation_term(0.0917, AREA_SQKM = 0.3667))
+  ))
+}
+
+
+#' Create an input file for Fortran program bldgrds
+#'
+#' bldgrds computes flow direction and D-infinity contributing area for a
+#' DEM, then traces the channel network downstream and writes it out as a
+#' node-list database, consumed by downstream programs such as netrace.
+#' Channel initiation is by area-slope threshold, separately calibrated for
+#' low- and high-gradient terrain, refined against a local relief raster and
+#' plan curvature. Optionally it also excavates the DEM along mapped
+#' road-crossing/culvert lines, masks out mapped water bodies before tracing
+#' channels, and writes a node point shapefile.
+#'
+#' Unlike most of the other `*_input()` builders, bldgrds has no single
+#' `OUTPUT ... RASTER` argument naming "the" output raster, so there is
+#' nothing here for a mode-3 (read-only) wrapper to read back afterwards.
+#'
+#' This reproduces the keyword grammar of a working reference run (for the
+#' Sprague River project) rather than the older, structurally different
+#' `bldGrds2.f90` this repo's `GridUtilities` checkout currently has --  see
+#' the "bldgrds" entry in this package's `CLAUDE.md` for that discrepancy.
+#' Treat this builder, not that file, as the authority on bldgrds' current
+#' input format until the two are reconciled.
+#'
+#' @param dem Input DEM (full path).
+#' @param scratch_dir Scratch directory; the input file is written here.
+#' @param aspect_length Length in meters over which aspect is smoothed
+#'   (`USE SMOOTHED ASPECT: LENGTH SCALE`).
+#' @param plan_length Length in meters over which plan curvature is measured.
+#' @param gradient_length_scale Length in meters over which gradient is
+#'   measured.
+#' @param d8_plan_coefficient,d8_aspect_coefficient Weights on plan curvature
+#'   and aspect in the D8 flow-direction calculation (`D8 COEFFICIENTS`).
+#' @param d8_aspect_length,d8_plan_length Length scales in meters for the
+#'   aspect and plan curvature used in that same D8 calculation
+#'   (`D8 LENGTH SCALES`).
+#' @param initiation_buffer_inner,initiation_buffer_outer Inner and outer
+#'   buffer distances in meters around a candidate initiation point
+#'   (`INITIATION BUFFER`).
+#' @param initiation_area_override Contributing area in square meters above
+#'   which channel initiation is forced regardless of other thresholds
+#'   (`INITIATION BUFFER: AREA OVERRIDE`).
+#' @param local_relief_threshold_high,local_relief_threshold_low High and low
+#'   local-relief thresholds for channel initiation (`LOCAL RELIEF
+#'   THRESHOLD`).
+#' @param area_slope_threshold_low_gradient,area_slope_threshold_high_gradient
+#'   Contributing-area threshold for channel initiation in low- and
+#'   high-gradient terrain, respectively.
+#' @param plan_curvature_threshold_low_gradient,plan_curvature_threshold_high_gradient
+#'   Plan curvature threshold for channel initiation in low- and
+#'   high-gradient terrain, respectively.
+#' @param minimum_threshold_flow_length Minimum flow length in meters for a
+#'   channel-initiation threshold to apply.
+#' @param minimum_channel_length Minimum channel length in meters.
+#' @param local_relief_raster Optional: precomputed local relief raster
+#'   (e.g. from [DEV()]/LocalRelief), reused instead of bldgrds calculating
+#'   its own.
+#' @param use_existing_files If TRUE, reuse existing intermediate files
+#'   (`USE EXISTING FILES`) rather than recalculating them.
+#' @param calibrate If TRUE, run in calibration mode.
+#' @param excavate_line Optional: polyline shapefile (e.g. road crossings) to
+#'   excavate through the DEM, clearing culvert blockages.
+#' @param excavate_line_buffer Buffer in meters around `excavate_line`. Only
+#'   meaningful with `excavate_line`.
+#' @param water_mask Optional: water-body polygon/raster mask.
+#' @param water_mask_min_patch_size Minimum patch size in square meters for
+#'   `water_mask`. Only meaningful with `water_mask`.
+#' @param water_mask_set_to_min_elevation If TRUE, set the DEM to its minimum
+#'   elevation within each water mask patch.
+#' @param water_mask_incise_to_center If TRUE, incise the DEM toward the
+#'   center of each water mask patch.
+#' @param water_mask_min_gradient Minimum gradient enforced within the water
+#'   mask.
+#' @param water_mask_buffer_radius Buffer radius in meters around the water
+#'   mask.
+#' @param water_mask_preclude_initiation If TRUE, preclude channel
+#'   initiation within the water mask.
+#' @param node_shapefile Optional: output node point shapefile
+#'   (`OUTPUT NODE POINT SHAPEFILE`).
+#' @param node_splits Optional: number of pieces to split each channel
+#'   segment into for the node point shapefile. Only meaningful with
+#'   `node_shapefile`.
+#' @param attribute_list List of [attribute_spec()] objects, written as an
+#'   `ATTRIBUTE LIST` block after every other keyword (bldgrds, like RIL,
+#'   reads this block separately from -- and after -- the rest of the input
+#'   file, so it must come last). Defaults to
+#'   [bldgrds_default_attributes()]. **A node point shapefile cannot be
+#'   created without an `ATTRIBUTE LIST` block**, so passing
+#'   `attribute_list = list()` together with a `node_shapefile` is an error
+#'   here rather than a silently broken run.
+#' @param overwrite If TRUE, allow overwriting an existing input file.
+#'
+#' @return The input file path, invisibly.
+#' @export
+bldgrds_input <- function(dem,
+                          scratch_dir,
+                          aspect_length,
+                          plan_length,
+                          gradient_length_scale,
+                          d8_plan_coefficient,
+                          d8_aspect_coefficient,
+                          d8_aspect_length,
+                          d8_plan_length,
+                          initiation_buffer_inner,
+                          initiation_buffer_outer,
+                          initiation_area_override,
+                          local_relief_threshold_high,
+                          local_relief_threshold_low,
+                          area_slope_threshold_low_gradient,
+                          area_slope_threshold_high_gradient,
+                          plan_curvature_threshold_low_gradient,
+                          plan_curvature_threshold_high_gradient,
+                          minimum_threshold_flow_length,
+                          minimum_channel_length = 0,
+                          local_relief_raster = NOFILE,
+                          use_existing_files = FALSE,
+                          calibrate = FALSE,
+                          excavate_line = NOFILE,
+                          excavate_line_buffer = NULL,
+                          water_mask = NOFILE,
+                          water_mask_min_patch_size = NULL,
+                          water_mask_set_to_min_elevation = FALSE,
+                          water_mask_incise_to_center = FALSE,
+                          water_mask_min_gradient = NULL,
+                          water_mask_buffer_radius = NULL,
+                          water_mask_preclude_initiation = FALSE,
+                          node_shapefile = NOFILE,
+                          node_splits = NULL,
+                          attribute_list = bldgrds_default_attributes(),
+                          overwrite = TRUE) {
+
+  # A node point shapefile is built from the ATTRIBUTE LIST block; bldgrds
+  # has no fallback for it the way it does for the node-list database, so
+  # catch an empty list here rather than let it fail silently downstream.
+  if (!is_missing_path(node_shapefile) && length(attribute_list) == 0L) {
+    stop("bldgrds_input(): node_shapefile was supplied but attribute_list ",
+         "is empty. A node point shapefile requires an ATTRIBUTE LIST ",
+         "block; pass bldgrds_default_attributes() or your own list.",
+         call. = FALSE)
+  }
+
+  writer <- input_writer("bldgrds", scratch_dir, "input_bldgrds.txt", overwrite)
+
+  # --- DEM and scratch space -----------------------------------------------
+  writer$keyword("DEM FILE", normalize_raster_path(dem, must_exist = TRUE))
+  writer$keyword("SCRATCH", normalize_file_path(scratch_dir))
+
+  # --- Road-crossing/culvert excavation, water masking (each optional) -----
+  writer$optional("EXCAVATE LINE",
+                  normalize_file_path(excavate_line, extension = "shp"),
+                  BUFFER = excavate_line_buffer)
+  writer$optional("WATER MASK",
+                  normalize_file_path(water_mask),
+                  `MINIMUM PATCH SIZE` = water_mask_min_patch_size,
+                  if (isTRUE(water_mask_set_to_min_elevation)) "SET TO MINIMUM ELEVATION",
+                  if (isTRUE(water_mask_incise_to_center)) "INCISE TO CENTER",
+                  `MINIMUM GRADIENT` = water_mask_min_gradient,
+                  `BUFFER RADIUS` = water_mask_buffer_radius,
+                  if (isTRUE(water_mask_preclude_initiation)) "PRECLUDE INITIATION")
+
+  # --- A bare flag keyword: no arguments, just the keyword and its colon ---
+  if (isTRUE(calibrate)) writer$keyword("CALIBRATE")
+
+  # --- Derivative length scales ---------------------------------------------
+  writer$keyword("USE SMOOTHED ASPECT", `LENGTH SCALE` = aspect_length)
+  writer$keyword("PLAN CURVATURE LENGTH SCALE", plan_length)
+  writer$keyword("GRADIENT LENGTH SCALE", gradient_length_scale)
+
+  # --- D8 flow-direction weighting ------------------------------------------
+  write_keyword_group(writer, "D8 COEFFICIENTS",
+                      c(PLAN = d8_plan_coefficient, ASPECT = d8_aspect_coefficient))
+  write_keyword_group(writer, "D8 LENGTH SCALES",
+                      c(ASPECT = d8_aspect_length, PLAN = d8_plan_length))
+
+  # --- Channel initiation ----------------------------------------------------
+  write_keyword_group(writer, "INITIATION BUFFER",
+                      c(INNER = initiation_buffer_inner,
+                        OUTER = initiation_buffer_outer,
+                        `AREA OVERRIDE` = initiation_area_override))
+  writer$optional("LOCAL RELIEF RASTER",
+                  normalize_raster_path(local_relief_raster, must_exist = TRUE))
+  write_keyword_group(writer, "LOCAL RELIEF THRESHOLD",
+                      c(HIGH = local_relief_threshold_high,
+                        LOW = local_relief_threshold_low))
+  writer$keyword("AREA SLOPE THRESHOLD LOW GRADIENT",
+                 area_slope_threshold_low_gradient)
+  writer$keyword("AREA SLOPE THRESHOLD HIGH GRADIENT",
+                 area_slope_threshold_high_gradient)
+  writer$keyword("PLAN CURVATURE THRESHOLD LOW GRADIENT",
+                 plan_curvature_threshold_low_gradient)
+  writer$keyword("PLAN CURVATURE THRESHOLD HIGH GRADIENT",
+                 plan_curvature_threshold_high_gradient)
+  writer$keyword("MINIMUM THRESHOLD FLOW LENGTH", minimum_threshold_flow_length)
+  writer$keyword("MINIMUM CHANNEL LENGTH", minimum_channel_length)
+
+  # --- Reuse existing intermediate files, or not ----------------------------
+  writer$keyword("USE EXISTING FILES", if (isTRUE(use_existing_files)) "YES" else "NO")
+
+  # --- Output ----------------------------------------------------------------
+  writer$optional("OUTPUT NODE POINT SHAPEFILE",
+                  normalize_file_path(node_shapefile), SPLITS = node_splits)
+
+  # --- Attribute list. Must come last: ReadInput() reads it via a separate
+  #     input%readlist() call made only after its main keyword-reading loop
+  #     has finished with the rest of the file (the same order RIL_input()
+  #     uses for the same reason). ---------------------------------------
+  writer$line("")
+  write_attribute_list(writer, attribute_list, indent = 0L,
+                       end_keyword = "END ATTRIBUTE LIST")
+
+  invisible(writer$file_path)
+}
+
+
+#' Create an input file for Fortran program bldgrds, enforcing an existing channel network
+#'
+#' bldgrds normally initiates new channels from area-slope/plan-curvature/local-relief
+#' thresholds (see [bldgrds_input()]). This builder instead traces the channel network from an
+#' existing, previously-mapped channel-network polyline shapefile (`channel_mask`), excavating
+#' ("digging") it into the DEM, and precludes any new channel initiation outside that mask --
+#' `NO NEW CHANNELS` is always written. None of [bldgrds_input()]'s channel-initiation-criteria
+#' arguments (aspect/plan-curvature/D8 length scales, initiation buffer, area-slope/plan-
+#' curvature/local-relief thresholds, minimum flow length, ...) are needed or accepted here,
+#' since no new initiation happens.
+#'
+#' Reproduces the keyword grammar of a working reference run (Skykomish project): `DEM FILE`,
+#' `SCRATCH`, `CHANNEL MASK` (w/ `FILE`, `DIG`, `RADIUS`, `DIRECTIONAL`, `INIT ALL`),
+#' `NO NEW CHANNELS`, `OUTPUT NODE POINT SHAPEFILE` (w/ `SPLITS`), `DRAINAGE WING RASTER`,
+#' `HAND RASTER` (w/ `FLOW THRESHOLD`, `NORMALIZE`), `TWI RASTER` (w/ `GRADIENT LENGTH SCALE`),
+#' and an `ATTRIBUTE LIST` block -- closed with `END LIST`, NOT `END ATTRIBUTE LIST` like
+#' [bldgrds_input()] writes. That's a real discrepancy between the two reference files this
+#' package's `bldgrds_input()`/`bldgrds_enforce_input()` are each built from, not a typo here --
+#' see the "bldgrds" entries in this package's `CLAUDE.md`; the two haven't been reconciled.
+#'
+#' @param dem Input DEM (full path).
+#' @param scratch_dir Scratch directory; the input file is written here.
+#' @param channel_mask Existing channel-network polyline shapefile to enforce (`CHANNEL MASK:
+#'   FILE`).
+#' @param channel_mask_dig Depth (DEM elevation units) to excavate/burn `channel_mask` into the
+#'   DEM (`CHANNEL MASK: DIG`).
+#' @param channel_mask_radius Radius used when excavating `channel_mask` into the DEM (`CHANNEL
+#'   MASK: RADIUS`).
+#' @param channel_mask_directional If TRUE, treat `channel_mask` as directional (`CHANNEL MASK:
+#'   DIRECTIONAL`).
+#' @param channel_mask_init_all If TRUE, seed channel initiation at every `channel_mask` cell,
+#'   not just its ends (`CHANNEL MASK: INIT ALL`).
+#' @param node_shapefile Optional: output node point shapefile (`OUTPUT NODE POINT SHAPEFILE`).
+#' @param node_splits Optional: number of pieces to split each channel segment into for
+#'   `node_shapefile`. Only meaningful with `node_shapefile`.
+#' @param drainage_wing_raster Optional: output drainage wing raster (`DRAINAGE WING RASTER`).
+#' @param hand_raster Optional: output HAND (height above nearest drainage) raster (`HAND
+#'   RASTER`).
+#' @param hand_flow_threshold Flow-accumulation threshold (as a proportion) for `hand_raster`
+#'   (`HAND RASTER: FLOW THRESHOLD`). Only meaningful with `hand_raster`.
+#' @param hand_normalize If TRUE, normalize `hand_raster` (`HAND RASTER: NORMALIZE`). Only
+#'   meaningful with `hand_raster`.
+#' @param twi_raster Optional: output topographic wetness index raster (`TWI RASTER`).
+#' @param twi_gradient_length_scale Length in meters over which gradient is measured for
+#'   `twi_raster` (`TWI RASTER: GRADIENT LENGTH SCALE`). Only meaningful with `twi_raster`.
+#' @param attribute_list List of [attribute_spec()] objects, written as an `ATTRIBUTE LIST`
+#'   block after every other keyword (same ordering constraint as [bldgrds_input()] -- must come
+#'   last). Defaults to [bldgrds_default_attributes()]. **A node point shapefile cannot be
+#'   created without an `ATTRIBUTE LIST` block**, so passing `attribute_list = list()` together
+#'   with a `node_shapefile` is an error here rather than a silently broken run.
+#' @param overwrite If TRUE, allow overwriting an existing input file.
+#'
+#' @return The input file path, invisibly.
+#' @export
+bldgrds_enforce_input <- function(dem,
+                                  scratch_dir,
+                                  channel_mask,
+                                  channel_mask_dig,
+                                  channel_mask_radius = 0,
+                                  channel_mask_directional = FALSE,
+                                  channel_mask_init_all = FALSE,
+                                  node_shapefile = NOFILE,
+                                  node_splits = NULL,
+                                  drainage_wing_raster = NOFILE,
+                                  hand_raster = NOFILE,
+                                  hand_flow_threshold = NULL,
+                                  hand_normalize = FALSE,
+                                  twi_raster = NOFILE,
+                                  twi_gradient_length_scale = NULL,
+                                  attribute_list = bldgrds_default_attributes(),
+                                  overwrite = TRUE) {
+
+  # A node point shapefile is built from the ATTRIBUTE LIST block; bldgrds has no fallback for
+  # it the way it does for the node-list database, so catch an empty list here rather than let
+  # it fail silently downstream. Same check as bldgrds_input().
+  if (!is_missing_path(node_shapefile) && length(attribute_list) == 0L) {
+    stop("bldgrds_enforce_input(): node_shapefile was supplied but attribute_list is empty. ",
+         "A node point shapefile requires an ATTRIBUTE LIST block; pass ",
+         "bldgrds_default_attributes() or your own list.", call. = FALSE)
+  }
+
+  writer <- input_writer("bldgrds_enforce", scratch_dir, "input_bldgrds_enforce.txt", overwrite)
+
+  # --- DEM and scratch space -----------------------------------------------
+  writer$keyword("DEM FILE", normalize_raster_path(dem, must_exist = TRUE))
+  writer$keyword("SCRATCH", normalize_file_path(scratch_dir))
+
+  # --- Enforce the existing channel network; preclude any new initiation ---------------------
+  # channel_mask is a polyline shapefile, not a raster -- normalize_file_path() (not
+  # normalize_raster_path(), which strips a raster extension and checks existence against
+  # RASTER_EXTENSIONS) with extensions = "shp" matches how other shapefile arguments are
+  # checked elsewhere (e.g. distance_to_road()'s road_shapefile).
+  writer$keyword("CHANNEL MASK",
+                 FILE = normalize_file_path(channel_mask, must_exist = TRUE,
+                                            extensions = "shp"),
+                 DIG = channel_mask_dig,
+                 RADIUS = channel_mask_radius,
+                 if (isTRUE(channel_mask_directional)) "DIRECTIONAL",
+                 if (isTRUE(channel_mask_init_all)) "INIT ALL")
+  writer$keyword("NO NEW CHANNELS")
+
+  # --- Outputs ---------------------------------------------------------------
+  writer$optional("OUTPUT NODE POINT SHAPEFILE",
+                  normalize_file_path(node_shapefile), SPLITS = node_splits)
+  writer$optional("DRAINAGE WING RASTER", normalize_file_path(drainage_wing_raster))
+  writer$optional("HAND RASTER", normalize_file_path(hand_raster),
+                  `FLOW THRESHOLD` = hand_flow_threshold,
+                  if (isTRUE(hand_normalize)) "NORMALIZE")
+  writer$optional("TWI RASTER", normalize_file_path(twi_raster),
+                  `GRADIENT LENGTH SCALE` = twi_gradient_length_scale)
+
+  # --- Attribute list. Must come last: ReadInput() reads it via a separate
+  #     input%readlist() call made only after its main keyword-reading loop
+  #     has finished with the rest of the file (the same order bldgrds_input()/RIL_input()
+  #     use for the same reason). Closed with END LIST here, not END ATTRIBUTE LIST -- see the
+  #     note in this function's docs above. -------------------------------------------------
+  writer$line("")
+  write_attribute_list(writer, attribute_list, indent = 0L, end_keyword = "END LIST")
 
   invisible(writer$file_path)
 }
