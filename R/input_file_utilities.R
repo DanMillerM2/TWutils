@@ -339,7 +339,8 @@ INPUT_FILE_NAMES <- c(
   "LocalRelief"        = "input_DEV.txt",
   "resample"           = "input_resample.txt",
   "RIL"                = "input_RIL.txt",
-  "netrace"            = "input_netrace.txt"
+  "netrace"            = "input_netrace.txt",
+  "ValleyFloor"        = "input_valleyfloor.txt"
 )
 
 
@@ -3327,6 +3328,409 @@ RIL_input <- function(dem,
   writer$line("# Node attributes")
   write_attribute_list(writer, attribute_list,
                        indent = 2L, end_keyword = "END LIST")
+
+  invisible(writer$file_path)
+}
+
+
+#' Default attribute list for Fortran program ValleyFloor
+#'
+#' Reproduces the `ATTRIBUTE LIST` block of a working reference run (Cherry
+#' project): node and channel identifiers plus contributing area, and, when a
+#' precipitation raster is supplied, mean annual flow/width/depth chained via
+#' regression equations -- the same pattern [ril_default_attributes()] and
+#' [bldgrds_default_attributes()] use, with a different mean-annual-flow
+#' equation (that reference's own comment cites it as the Puget Sound
+#' regional equation: `Source: ...netrace_parameters.WWA5: Washington -
+#' Puget Sound`). Width and depth reuse the same Magirl and Olsen (2009)
+#' coefficients [ril_default_attributes()] does.
+#'
+#' @param precip_raster Optional: mean annual precipitation raster. Omit to
+#'   get just the identifier/area attributes.
+#' @return A list of [attribute_spec()] objects.
+#' @seealso [valleyfloor_input()]
+#' @export
+valleyfloor_default_attributes <- function(precip_raster = NOFILE) {
+
+  attribute_list <- list(
+    attribute_spec("NODE ID", output_field = "NODE_ID"),
+    attribute_spec("CHANNEL ID"),
+    attribute_spec("CONTRIBUTING AREA", len = 12, deccnt = 4,
+                   output_field = "AREA_SQKM")
+  )
+
+  if (is_missing_path(precip_raster)) return(attribute_list)
+
+  c(attribute_list, list(
+
+    attribute_spec("MEAN ANNUAL PRECIP",
+                   file = precip_raster,
+                   output_field = "MNANPRC_M"),
+
+    # Kresch, 1998, WRIR96-4208 (Puget Sound regional equation)
+    attribute_spec("MEAN ANNUAL FLOW",
+                   output_field = "MEANANNCMS",
+                   terms = equation_term(0.021612245,
+                                         AREA_SQKM = 0.933,
+                                         MNANPRC_M = 1.48)),
+
+    # Magirl and Olsen, 2009
+    attribute_spec("WIDTH",
+                   output_field = "WIDTH_M",
+                   replace = TRUE,
+                   terms = equation_term(7.350799, MEANANNCMS = 0.45)),
+
+    attribute_spec("DEPTH",
+                   output_field = "DEPTH_M",
+                   replace = TRUE,
+                   terms = equation_term(0.2621106, MEANANNCMS = 0.37))
+  ))
+}
+
+
+#' Locate ValleyFloor's binary output data file
+#'
+#' ValleyFloor writes its per-channel results (distance/height/depth above
+#' channel, valley width, node attributes) to a binary data file named
+#' `valleyfloor_<ID>.dat`, in the *DEM's own directory* -- `ValleyFloor.f90`
+#' builds this path as `TRIM(refDEM%path)//'valleyfloor_'//TRIM(dataID)//
+#' '.dat'`, not anywhere under `scratch_dir`. The file is opened
+#' unconditionally on every run (for reading, if `read_data = TRUE`; for
+#' writing/replacing otherwise), regardless of which, if any, output rasters
+#' were requested -- it is ValleyFloor's real output, and the only one
+#' that's never optional.
+#'
+#' `<ID>` is `data_id` if one was supplied (matching an explicit
+#' `DATA ID` keyword -- see [valleyfloor_input()]'s `data_id` argument, only
+#' honored in `all_channels = TRUE` mode); otherwise it falls back to the ID
+#' `DEM_module`'s `resolveDEMname()` derives from the DEM's own file name:
+#' everything after the first underscore in its (extensionless) base name,
+#' e.g. `elev_Cherry` -> `Cherry`, or the whole base name if it has no
+#' underscore.
+#'
+#' @param dem Input DEM (full path), exactly as passed to
+#'   [valleyfloor_input()]/[valleyfloor()].
+#' @param data_id Optional: an explicit data ID, matching `data_id` as
+#'   actually passed to [valleyfloor_input()]/[valleyfloor()]. Omit (or pass
+#'   `NOFILE`) to derive the ID from `dem` the same way ValleyFloor itself
+#'   does when no `DATA ID` keyword is written.
+#'
+#' @return The full path of the `valleyfloor_<ID>.dat` file.
+#' @seealso [valleyfloor_input()], [valleyfloor()]
+#' @export
+valleyfloor_dat_file <- function(dem, data_id = NOFILE) {
+
+  dem_path <- normalize_raster_path(dem)
+  # dirname() hands back forward slashes even when dem_path is
+  # backslash-separated; re-normalize so join_path() below doesn't produce a
+  # path mixing both separators.
+  dem_dir  <- normalizePath(dirname(dem_path), winslash = "\\", mustWork = FALSE)
+  base     <- basename(dem_path)
+
+  resolved_id <- if (!is_missing_path(data_id)) {
+    as.character(data_id)
+  } else {
+    # resolveDEMname(): DEMID is everything after the first underscore in
+    # the base name, or the whole base name if there is none.
+    underscore <- regexpr("_", base, fixed = TRUE)
+    if (underscore > 0L) substring(base, underscore + 1L) else base
+  }
+
+  join_path(dem_dir, paste0("valleyfloor_", resolved_id, ".dat"))
+}
+
+
+#' Create an input file for Fortran program ValleyFloor
+#'
+#' ValleyFloor builds a cell-by-cell height/depth-above-channel surface
+#' across the valley surrounding each selected channel, then, when requested,
+#' measures valley width at a series of depth-above-channel thresholds and/or
+#' (with `method = 4`) fits a TIN-based flood-inundation surface. It always
+#' requires an `ATTRIBUTE LIST` block -- `ValleyFloor.f90` aborts with "No
+#' attributes specified" if `input%readList()` returns none -- so
+#' `attribute_list` defaults to [valleyfloor_default_attributes()] rather
+#' than an empty list.
+#'
+#' ValleyFloor's actual output is a binary per-channel data file,
+#' `valleyfloor_<ID>.dat`, written unconditionally next to the DEM (see
+#' [valleyfloor_dat_file()]) -- not any of the `out_elev`/`out_depth`/
+#' `out_elev_bil`/`out_depth_bil`/`out_flood_height`/`out_flood_depth`/
+#' `out_d8` rasters below, all of which are genuinely optional: ValleyFloor
+#' runs fine with none of them requested, and this builder never requires
+#' one.
+#'
+#' Reproduces the keyword grammar of a working reference run (Cherry
+#' project). Several keywords that appear (commented out) in older copies of
+#' `input_valleyfloor.txt` -- `INPUT WATER MASK RASTER`, `INPUT REACH
+#' SHAPEFILE`, `CHANNEL BUFFER`, `VALLEY MASK`, and every legacy mode switch
+#' except `MEASURE VALLEY WIDTHS` (`CALCULATE HEIGHT ABOVE CHANNEL`,
+#' `CREATE TOPOGRAPHICALLY DEFINED CHANNEL MASK`, `DETERMINE FLOW TYPE FOR
+#' CHANNEL NODES`, `MAP VALLEY FLOOR LANDFORMS`) -- have **no matching
+#' `CASE` in `ValleyFloor.f90`'s `readInputFile()`**; its `SELECT CASE` has
+#' no `CASE DEFAULT`, so they would be silently parsed and dropped as
+#' no-ops rather than doing anything, and so are not written here. In
+#' particular, height-above is triggered by requesting `out_elev`/
+#' `out_depth`/`out_elev_bil`/`out_depth_bil`, not by a
+#' "calculate height above" switch. See this package's `CLAUDE.md` for that
+#' finding.
+#'
+#' The `ATTRIBUTE LIST` block is read by a separate, shared `ReadList()`
+#' routine (`..\\modules\\Utilities.f90`) that rewinds the input file and
+#' rescans it from the top looking specifically for that keyword. So, unlike
+#' the "must come last" constraint documented for [RIL_input()] and
+#' [bldgrds_input()], its position in the file does not actually matter here
+#' -- confirmed against `ReadList()`'s source, not just inferred -- because
+#' `ValleyFloor.f90`'s own main keyword loop also has no `CASE DEFAULT` and so
+#' just ignores the block's lines as it passes over them on its way to
+#' whatever keyword comes next. This writes it in the same position as the
+#' reference file anyway: after the main keywords, before
+#' `HEIGHT ABOVE STEP LIST`/`VALLEY WIDTH WINDOW IN CHANNEL WIDTHS`.
+#'
+#' @param dem Input DEM (full path).
+#' @param scratch_dir Scratch directory; the input file is written here.
+#' @param all_channels If TRUE (the default), process every channel at least
+#'   `min_chan_width` wide (`ALL CHANNELS`). Set FALSE and supply
+#'   `channel_list` to process only specific channel numbers instead
+#'   (`CHANNEL LIST`).
+#' @param channel_list Integer vector of channel numbers to process. Only
+#'   used, and required, when `all_channels = FALSE`.
+#' @param min_chan_width,min_chan_area Minimum channel width (meters) or
+#'   contributing area for a channel to be processed. Only meaningful with
+#'   `all_channels = TRUE`.
+#' @param write_data,read_data If TRUE, write/read the per-channel binary
+#'   data files (`WRITE DATA`/`READ DATA`).
+#' @param overwrite_data If TRUE, overwrite existing per-channel data files
+#'   (`OVERWRITE EXISTING DATA FILES`), or, with `channel_list`, the bare
+#'   `OVERWRITE` flag.
+#' @param data_id Optional: a data-file ID tag (`DATA ID`). Only meaningful
+#'   with `all_channels = TRUE`.
+#' @param method Height-above algorithm: 1 for the default per-cell
+#'   weighted-average method, 4 for the TIN-based method (required for
+#'   `out_flood_height`/`out_flood_depth`).
+#' @param sampling_interval DEM sampling interval, in cells, for the
+#'   height-above calculation (`SAMPLING INTERVAL`).
+#' @param valley_buffer Named vector: `CHANNEL WIDTHS`, `MIN RADIUS` and
+#'   `MAX RADIUS` bounding how far from the channel to search for valley
+#'   cells (`VALLEY BUFFER`).
+#' @param expansion_factor,second_expansion Multipliers expanding the search
+#'   radius around each valley cell (`EXPANSION FACTOR`); `second_expansion`
+#'   is optional.
+#' @param mask_by_watershed If TRUE, restrict the valley mask to the local
+#'   watershed (`MASK BY WATERSHED`).
+#' @param max_depth_dif Maximum channel-depth difference used to limit the
+#'   distance-to-channel search (`MAXIMUM DEPTH DIFFERENCE`).
+#' @param min_elev_dif Minimum absolute elevation difference that
+#'   height-above is forced to extend to (`MINIMUM ELEVATION DIFFERENCE`).
+#' @param weighting_exponent Exponent weighting nearby channel cells more
+#'   heavily in the height-above calculation (`WEIGHTING EXPONENT`).
+#' @param smoothing_iterations Smoothing passes applied to the height-above
+#'   surface (`SMOOTHING ITERATIONS`).
+#' @param inundation_smoothing_max_radius Maximum radius in meters for
+#'   smoothing the flood-inundation surface (`INUNDATION SMOOTHING MAX
+#'   RADIUS`). Only meaningful with `method = 4`.
+#' @param max_depths_above,max_depths_below Limits, in channel depths, on how
+#'   far above/below the channel height-above is mapped (`MAXIMUM DEPTHS
+#'   ABOVE`/`MAXIMUM DEPTHS BELOW`).
+#' @param max_dif_dist_chan_dist_node Maximum allowed difference between
+#'   distance-to-channel measured by cell and by node
+#'   (`MAXIMUM DIFFERENCE, DIST CHAN DIST NODE`).
+#' @param monotonic If not NULL, write the `MONOTONIC` flag forcing each
+#'   channel profile to increase in elevation upstream; TRUE/FALSE write
+#'   `YES`/`NO`.
+#' @param minimum_channel_length Optional: minimum channel length in meters
+#'   (`MINIMUM CHANNEL LENGTH`).
+#' @param fill_dem_holes If TRUE, fill holes in the DEM before processing
+#'   (`FILL DEM HOLES`).
+#' @param fill_dem_holes_max_size,fill_dem_holes_min_elev Optional: maximum
+#'   hole size (square meters) and minimum fill elevation. Only meaningful
+#'   with `fill_dem_holes = TRUE`.
+#' @param input_d8 Optional: precomputed D8 flow-direction raster
+#'   (`INPUT D8 RASTER`), reused instead of recalculating it.
+#' @param out_elev,out_depth Optional: output height-above-channel elevation
+#'   and depth rasters (`OUTPUT ELEV RASTER`/`OUTPUT DEPTH RASTER`). Either
+#'   one triggers the height-above calculation.
+#' @param out_elev_bil,out_depth_bil Optional: the same, written as `.bil`
+#'   rather than `.flt` (`OUTPUT ELEV BIL`/`OUTPUT DEPTH BIL`).
+#' @param out_flood_height,out_flood_depth Optional: output flood-inundation
+#'   height and depth rasters (`OUTPUT FLOOD HEIGHT RASTER`/`OUTPUT FLOOD
+#'   DEPTH RASTER`). Require `method = 4`.
+#' @param out_d8 Optional: output D8 flow-direction raster
+#'   (`OUTPUT D8 RASTER`).
+#' @param measure_valley_widths If TRUE, measure valley widths at each of
+#'   `height_above_steps` (`MEASURE VALLEY WIDTHS`).
+#' @param height_above_steps Numeric vector of channel-depth steps, in
+#'   channel depths above the channel, at which to measure valley width
+#'   (`HEIGHT ABOVE STEP LIST`).
+#' @param valley_width_window Window length, in channel widths, over which
+#'   valley width is averaged along the channel (`VALLEY WIDTH WINDOW IN
+#'   CHANNEL WIDTHS`).
+#' @param attribute_list List of [attribute_spec()] objects to compute for
+#'   each channel node, written as an `ATTRIBUTE LIST` block. Defaults to
+#'   [valleyfloor_default_attributes()]; ValleyFloor requires at least one
+#'   attribute.
+#' @param upstream_node,downstream_node Optional: restrict processing to the
+#'   channel segment between these two node IDs.
+#' @param time_it If TRUE, write the `TIME IT` flag, timing the height-above
+#'   calculation.
+#' @param debug If TRUE, write the `DEBUG` flag.
+#' @param overwrite If TRUE, allow overwriting an existing input file.
+#'
+#' @return The input file path, invisibly.
+#' @seealso [valleyfloor_default_attributes()], [valleyfloor()]
+#' @export
+valleyfloor_input <- function(dem,
+                              scratch_dir,
+                              all_channels = TRUE,
+                              channel_list = NULL,
+                              min_chan_width = 1.0,
+                              min_chan_area = NULL,
+                              write_data = TRUE,
+                              read_data = FALSE,
+                              overwrite_data = TRUE,
+                              data_id = NOFILE,
+                              method = 4,
+                              sampling_interval = 1,
+                              valley_buffer = c(`CHANNEL WIDTHS` = 150,
+                                                `MIN RADIUS` = 20,
+                                                `MAX RADIUS` = 1000),
+                              expansion_factor = 1.5,
+                              second_expansion = 3.0,
+                              mask_by_watershed = TRUE,
+                              max_depth_dif = 15,
+                              min_elev_dif = 2.0,
+                              weighting_exponent = 1.0,
+                              smoothing_iterations = 0,
+                              inundation_smoothing_max_radius = 20,
+                              max_depths_above = 12,
+                              max_depths_below = -12,
+                              max_dif_dist_chan_dist_node = 0.25,
+                              monotonic = NULL,
+                              minimum_channel_length = NULL,
+                              fill_dem_holes = FALSE,
+                              fill_dem_holes_max_size = NULL,
+                              fill_dem_holes_min_elev = NULL,
+                              input_d8 = NOFILE,
+                              out_elev = NOFILE,
+                              out_depth = NOFILE,
+                              out_elev_bil = NOFILE,
+                              out_depth_bil = NOFILE,
+                              out_flood_height = NOFILE,
+                              out_flood_depth = NOFILE,
+                              out_d8 = NOFILE,
+                              measure_valley_widths = TRUE,
+                              height_above_steps = c(0, 0.25, 0.5, 0.75, 1.0,
+                                                     1.5, 2.0, 2.5, 3.0, 4.0,
+                                                     5.0, 7.5, 10.0),
+                              valley_width_window = 20,
+                              attribute_list = valleyfloor_default_attributes(),
+                              upstream_node = NULL,
+                              downstream_node = NULL,
+                              time_it = FALSE,
+                              debug = FALSE,
+                              overwrite = TRUE) {
+
+  writer <- input_writer("ValleyFloor", scratch_dir, "input_valleyfloor.txt",
+                         overwrite)
+
+  # --- Basic instructions ---------------------------------------------------
+  writer$keyword("MEASURE VALLEY WIDTHS",
+                 if (isTRUE(measure_valley_widths)) "YES" else "NO")
+
+  # --- DEM and scratch space -------------------------------------------------
+  writer$keyword("DEM", normalize_raster_path(dem, must_exist = TRUE))
+  writer$optional("INPUT D8 RASTER",
+                  normalize_raster_path(input_d8, must_exist = TRUE))
+  writer$keyword("METHOD", method)
+  writer$keyword("SAMPLING INTERVAL", sampling_interval)
+
+  if (isTRUE(fill_dem_holes)) {
+    writer$keyword("FILL DEM HOLES",
+                   `MAX HOLE SIZE` = fill_dem_holes_max_size,
+                   `MIN ELEV` = fill_dem_holes_min_elev)
+  }
+
+  # --- Channel selection ------------------------------------------------------
+  if (isTRUE(all_channels)) {
+    all_channels_args <- list(`MINIMUM WIDTH` = min_chan_width)
+    if (!is.null(min_chan_area)) {
+      all_channels_args <- c(all_channels_args, list(`MINIMUM AREA` = min_chan_area))
+    }
+    if (isTRUE(write_data))  all_channels_args <- c(all_channels_args, list("WRITE DATA"))
+    if (isTRUE(read_data))   all_channels_args <- c(all_channels_args, list("READ DATA"))
+    if (!is_missing_path(data_id)) {
+      all_channels_args <- c(all_channels_args, list(`DATA ID` = data_id))
+    }
+    all_channels_args <- c(all_channels_args, list(
+      `OVERWRITE EXISTING DATA FILES` = if (isTRUE(overwrite_data)) "YES" else "NO"
+    ))
+    do.call(writer$keyword, c(list("ALL CHANNELS"), all_channels_args))
+  } else {
+    if (is.null(channel_list) || length(channel_list) == 0L) {
+      stop("valleyfloor_input(): channel_list must be supplied when ",
+           "all_channels = FALSE", call. = FALSE)
+    }
+    writer$keyword("CHANNEL LIST", if (isTRUE(overwrite_data)) "OVERWRITE" else NULL)
+    for (i in seq_along(channel_list)) {
+      writer$keyword(as.character(i), channel_list[i], .indent = 2L)
+    }
+    writer$keyword("END LIST")
+  }
+
+  if (!is.null(monotonic)) {
+    writer$keyword("MONOTONIC", if (isTRUE(monotonic)) "YES" else "NO")
+  }
+  if (!is.null(minimum_channel_length)) {
+    writer$keyword("MINIMUM CHANNEL LENGTH", minimum_channel_length)
+  }
+  if (!is.null(upstream_node))   writer$keyword("UPSTREAM NODE", upstream_node)
+  if (!is.null(downstream_node)) writer$keyword("DOWNSTREAM NODE", downstream_node)
+  writer$keyword("MAXIMUM DIFFERENCE, DIST CHAN DIST NODE",
+                 max_dif_dist_chan_dist_node)
+
+  # --- Valley-floor geometry --------------------------------------------------
+  write_keyword_group(writer, "VALLEY BUFFER", valley_buffer)
+  writer$keyword("EXPANSION FACTOR", expansion_factor,
+                 `SECOND EXPANSION` = second_expansion)
+  if (isTRUE(mask_by_watershed)) writer$keyword("MASK BY WATERSHED")
+  writer$keyword("MAXIMUM DEPTH DIFFERENCE", max_depth_dif)
+  writer$keyword("MINIMUM ELEVATION DIFFERENCE", min_elev_dif)
+  writer$keyword("WEIGHTING EXPONENT", weighting_exponent)
+  writer$keyword("SMOOTHING ITERATIONS", smoothing_iterations)
+
+  # --- Flood inundation (method = 4) ------------------------------------------
+  writer$keyword("INUNDATION SMOOTHING MAX RADIUS",
+                 inundation_smoothing_max_radius)
+  writer$keyword("MAXIMUM DEPTHS ABOVE", max_depths_above)
+  writer$keyword("MAXIMUM DEPTHS BELOW", max_depths_below)
+
+  if (isTRUE(time_it)) writer$keyword("TIME IT")
+  if (isTRUE(debug))   writer$keyword("DEBUG")
+
+  # --- Outputs -----------------------------------------------------------------
+  writer$optional("OUTPUT ELEV RASTER",        normalize_raster_path(out_elev))
+  writer$optional("OUTPUT DEPTH RASTER",       normalize_raster_path(out_depth))
+  writer$optional("OUTPUT ELEV BIL",           normalize_file_path(out_elev_bil))
+  writer$optional("OUTPUT DEPTH BIL",          normalize_file_path(out_depth_bil))
+  writer$optional("OUTPUT FLOOD HEIGHT RASTER", normalize_raster_path(out_flood_height))
+  writer$optional("OUTPUT FLOOD DEPTH RASTER",  normalize_raster_path(out_flood_depth))
+  writer$optional("OUTPUT D8 RASTER",          normalize_raster_path(out_d8))
+
+  # --- Attribute list. ReadList() rewinds and rescans the whole file for
+  #     this keyword, so -- unlike RIL_input()/bldgrds_input() -- it does not
+  #     actually have to come last; see Details above. Written here to match
+  #     the reference file's own layout. -------------------------------------
+  writer$line("")
+  write_attribute_list(writer, attribute_list, indent = 0L, end_keyword = "END LIST")
+
+  # --- Valley-width steps and window, after the attribute list, as in the
+  #     reference file. ---------------------------------------------------------
+  writer$line("")
+  writer$keyword("HEIGHT ABOVE STEP LIST")
+  for (i in seq_along(height_above_steps)) {
+    writer$keyword(paste0("STEP ", i), height_above_steps[i], .indent = 2L)
+  }
+  writer$keyword("END LIST")
+  writer$keyword("VALLEY WIDTH WINDOW IN CHANNEL WIDTHS", valley_width_window)
 
   invisible(writer$file_path)
 }

@@ -1474,3 +1474,66 @@ RIL <- function(dem = NOFILE,
 
   terra::rast(add_extension_if_missing(out_RIL, "flt"))
 }
+
+
+# =========================================================================
+# SECTION 13.  VALLEY FLOOR AND VALLEY WIDTH
+# =========================================================================
+
+#' Height above channel, valley width, and (optionally) flood inundation
+#'
+#' A wrapper for Fortran program ValleyFloor. For each selected channel,
+#' ValleyFloor builds a cell-by-cell height/depth-above-channel surface
+#' across the surrounding valley, then, when requested, measures valley
+#' width at each of a series of depth-above-channel thresholds and/or (with
+#' `method = 4`) fits a TIN-based flood-inundation surface.
+#'
+#' ValleyFloor's actual product is a binary per-channel data file,
+#' `valleyfloor_<ID>.dat`, written next to the DEM (not in `scratch_dir`) --
+#' see [valleyfloor_dat_file()] for how `<ID>` is resolved. This file is
+#' always written, whatever else was requested; every output raster
+#' [valleyfloor_input()] knows about (`out_elev`, `out_depth`,
+#' `out_flood_height`, `out_flood_depth`, `out_d8`, ...) is optional, and the
+#' program runs perfectly well with none of them requested. Ask for whichever
+#' rasters you want via `...` and read them back yourself afterward (with
+#' [terra::rast()], say) using the paths you supplied.
+#'
+#' @param dem Character: input DEM (full path).
+#' @param scratch_dir Character: scratch directory. The ValleyFloor input
+#'   file is written here (the `.dat` output file is not -- see above).
+#' @param ... Further arguments passed to [valleyfloor_input()]: channel
+#'   selection, valley-buffer/height-above/valley-width parameters, the
+#'   optional output rasters, and `attribute_list`.
+#' @param executable_dir Character: directory holding ValleyFloor.exe. There
+#'   is no default location: it must always be supplied.
+#'
+#' @return The full path of the `valleyfloor_<ID>.dat` binary data file
+#'   ValleyFloor wrote (or updated, if `read_data = TRUE`).
+#'
+#' @seealso [valleyfloor_input()], [valleyfloor_dat_file()],
+#'   [valleyfloor_default_attributes()]
+#' @export
+valleyfloor <- function(dem = NOFILE,
+                        scratch_dir = NOFILE,
+                        ...,
+                        executable_dir = NULL) {
+
+  check <- argument_checker()
+  check$input_file(dem, "dem")
+  check$directory(scratch_dir, "scratch_dir")
+  check$report()
+
+  input_file <- valleyfloor_input(dem = dem, scratch_dir = scratch_dir, ...)
+
+  run_program("ValleyFloor", input_file, executable_dir)
+
+  # ValleyFloor.f90 only ever honors a DATA ID keyword when it is written --
+  # i.e. inside ALL CHANNELS mode (see valleyfloor_input()) -- so a
+  # channel_list = FALSE call always falls back to the DEM-derived ID,
+  # whatever data_id was passed here.
+  requested <- list(...)
+  all_channels <- if (is.null(requested$all_channels)) TRUE else requested$all_channels
+  data_id <- if (isTRUE(all_channels)) requested$data_id else NOFILE
+
+  valleyfloor_dat_file(dem, data_id)
+}
