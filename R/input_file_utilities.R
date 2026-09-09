@@ -1132,6 +1132,50 @@ write_attribute_entry <- function(writer, attribute, indent = 4L) {
 }
 
 
+#' Check that every equation attribute's FIELDs are already defined
+#'
+#' An equation attribute's [equation_term()]s reference other attributes by
+#' their OUTPUT FIELD name (falling back to the bare attribute `name` when no
+#' `output_field` was given, since that is the field name the Fortran side
+#' falls back to as well) -- and, per [equation_term()], those fields "must
+#' be already computed", i.e. written by an attribute earlier in the same
+#' list. Silently writing a FIELD that is not yet defined -- a typo, or an
+#' attribute listed out of order -- produces a file the Fortran side either
+#' errors on or (as with a misspelled EXPONENT, mentioned elsewhere) silently
+#' misparses, rather than failing at the point the mistake was made. This
+#' collects every such problem and raises one error naming all of them,
+#' rather than letting the first one through to a run-time failure.
+#'
+#' @param attribute_list List of [attribute_spec()] objects, in write order.
+#' @return TRUE, invisibly. Stops naming every FIELD referenced before (or
+#'   without ever) being defined.
+#' @noRd
+check_attribute_equation_fields <- function(attribute_list) {
+
+  problems <- character(0)
+  defined <- character(0)
+
+  for (attribute in attribute_list) {
+    for (term in attribute$terms) {
+      missing_fields <- setdiff(names(term$exponents), defined)
+      for (field in missing_fields) {
+        problems <- c(problems, sprintf(
+          "attribute '%s' equation references FIELD %s, which is not defined by an earlier attribute in the list",
+          attribute$name, field))
+      }
+    }
+    field_name <- if (!is.null(attribute$output_field)) attribute$output_field else attribute$name
+    defined <- c(defined, field_name)
+  }
+
+  if (length(problems) > 0L) {
+    stop("problem with attribute list:\n  ",
+         paste(problems, collapse = "\n  "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+
 #' Write a whole ATTRIBUTE LIST block
 #'
 #' @param writer A writer list from [input_writer()].
@@ -1147,6 +1191,8 @@ write_attribute_list <- function(writer,
                                  indent = 2L,
                                  end_keyword = "END LIST") {
   if (length(attribute_list) == 0L) return(invisible(0L))
+
+  check_attribute_equation_fields(attribute_list)
 
   writer$keyword("ATTRIBUTE LIST", .indent = indent)
   for (attribute in attribute_list) {
@@ -2347,58 +2393,25 @@ bldgrds_nochannels_input <- function(dem,
 #'
 #' bldgrds builds a channel node-list database (and, if requested, a node
 #' point shapefile) via the same `attributeList` machinery RIL uses
-#' (`ChannelNode_Module.f90`). This reproduces the attribute block of a
-#' working Sprague-River reference run, giving each node its elevation and
-#' contributing area, then, when a precipitation raster is supplied, chaining
-#' mean annual precipitation into mean annual flow and published regional
-#' hydraulic-geometry equations for channel width and depth -- the same
-#' pattern [ril_default_attributes()] uses for RIL, with different citations.
-#'
-#' @param precip_raster Mean annual precipitation raster. When absent, the
-#'   four dependent attributes (mean annual precipitation and flow, width,
-#'   depth) are omitted.
+#' (`ChannelNode_Module.f90`). This reproduces the bare elevation/area
+#' attribute block of a working Sprague-River reference run. That reference
+#' run's precipitation-dependent chain (mean annual precipitation feeding
+#' Lorenson, Marcus and Roberts, 1994, for mean annual flow, and White,
+#' McCullough, Justice and Kelsey, 2011, for channel width and depth) is NOT
+#' reproduced here -- see the note on [ril_default_attributes()]: a
+#' `precip_raster` is a property of the `MEAN ANNUAL PRECIP` attribute entry
+#' itself, supplied only via an attribute-list text file read with
+#' [read_attribute_list_file()] (see `bldgrds_attributes_example.txt` in the
+#' UnstableSlopes repo).
 #'
 #' @return A list of [attribute_spec()] objects.
-#' @references
-#' Lorenson, Marcus and Roberts, 1994 (mean annual flow).
-#' White, McCullough, Justice and Kelsey, 2011 (channel width and depth).
 #' @export
-bldgrds_default_attributes <- function(precip_raster = NOFILE) {
+bldgrds_default_attributes <- function() {
 
-  attribute_list <- list(
+  list(
     attribute_spec("ELEVATION"),
     attribute_spec("CONTRIBUTING AREA", output_field = "AREA_SQKM")
   )
-
-  if (is_missing_path(precip_raster)) return(attribute_list)
-
-  c(attribute_list, list(
-
-    attribute_spec("MEAN ANNUAL PRECIP",
-                   file = precip_raster,
-                   output_field = "MNANPRC_M",
-                   units = "mm",
-                   replace = TRUE),
-
-    # Lorenson, Marcus and Roberts, 1994
-    attribute_spec("MEAN ANNUAL FLOW",
-                   output_field = "MEANANNCMS",
-                   replace = TRUE,
-                   terms = equation_term(0.00537986,
-                                         AREA_SQKM = 1.176471,
-                                         MNANPRC_M = 2.062353663)),
-
-    # White, McCullough, Justice, and Kelsey, 2011
-    attribute_spec("WIDTH",
-                   output_field = "WIDTH_M",
-                   replace = TRUE,
-                   terms = equation_term(1.5662, AREA_SQKM = 0.385)),
-
-    attribute_spec("DEPTH",
-                   output_field = "DEPTH_M",
-                   replace = TRUE,
-                   terms = equation_term(0.0917, AREA_SQKM = 0.3667))
-  ))
 }
 
 
@@ -2964,27 +2977,25 @@ resample_input <- function(in_raster,
 
 #' The attribute list from the reference RIL input file
 #'
-#' Reproduces the attribute block of the Post Mortem RIL run, a working
-#' configuration with published hydraulic-geometry equations.
-#'
-#' The last four attributes form a chain: mean annual precipitation is sampled
-#' from a raster, mean annual flow is computed from contributing area and that
-#' precipitation, and width and depth follow from the flow. They are therefore
-#' only included when a precipitation raster is supplied.
-#'
-#' @param precip_raster Mean annual precipitation raster. When absent, the four
-#'   dependent attributes are omitted.
+#' Reproduces the bare identifier/area/geometry attribute block of the Post
+#' Mortem RIL run. The reference run's precipitation-dependent chain (mean
+#' annual precipitation sampled from a raster, feeding published
+#' hydraulic-geometry equations for mean annual flow, channel width and
+#' depth -- Kresch, D.L., 1998, Water Resources Investigations Report
+#' 98-4160, for mean annual flow; Magirl and Olsen, 2009, for channel width
+#' and depth) is NOT reproduced here: a `precip_raster` is a property of the
+#' `MEAN ANNUAL PRECIP` attribute entry itself, not a separate argument to
+#' this function, so it can only be supplied by writing that attribute (and
+#' whatever depends on it) directly into an attribute-list text file read
+#' with [read_attribute_list_file()] -- see `RIL_attributes_example.txt` in
+#' the UnstableSlopes repo for a ready-to-copy example carrying that same
+#' chain.
 #'
 #' @return A list of [attribute_spec()] objects.
-#'
-#' @references
-#' Kresch, D.L., 1998, Water Resources Investigations Report 98-4160
-#'   (mean annual flow).
-#' Magirl and Olsen, 2009 (channel width and depth).
 #' @export
-ril_default_attributes <- function(precip_raster = NOFILE) {
+ril_default_attributes <- function() {
 
-  attribute_list <- list(
+  list(
     attribute_spec("NODE ID"),
     attribute_spec("ORDER"),
     attribute_spec("CONTRIBUTING AREA", output_field = "AREA_SQKM"),
@@ -2994,36 +3005,6 @@ ril_default_attributes <- function(precip_raster = NOFILE) {
     attribute_spec("LENGTH_M"),
     attribute_spec("FLUVIAL", type = "I4", field_length = 1)
   )
-
-  if (is_missing_path(precip_raster)) return(attribute_list)
-
-  c(attribute_list, list(
-
-    attribute_spec("MEAN ANNUAL PRECIP",
-                   file = precip_raster,
-                   output_field = "MNANPRC_M",
-                   units = "mm",
-                   replace = TRUE),
-
-    # Kresch, 1998, WRIR 98-4160
-    attribute_spec("MEAN ANNUAL FLOW",
-                   output_field = "MEANANNCMS",
-                   replace = TRUE,
-                   terms = equation_term(0.017165249,
-                                         AREA_SQKM = 0.985,
-                                         MNANPRC_M = 1.37)),
-
-    # Magirl and Olsen, 2009
-    attribute_spec("WIDTH",
-                   output_field = "WIDTH_M",
-                   replace = TRUE,
-                   terms = equation_term(7.350799, MEANANNCMS = 0.45)),
-
-    attribute_spec("DEPTH",
-                   output_field = "DEPTH_M",
-                   replace = TRUE,
-                   terms = equation_term(0.2621106, MEANANNCMS = 0.37))
-  ))
 }
 
 #'--- RIL_input, Create an input file for Fortran program RIL ---
@@ -3190,7 +3171,7 @@ RIL_input <- function(dem,
                       out_prof = NOFILE,
                       out_nodes = NOFILE,
                       out_zero_order = NOFILE,
-                      attribute_list = ril_default_attributes("c:\\work\\data\\postmortem\\prism_wasp_m"),
+                      attribute_list = ril_default_attributes(),
                       use_ltd = TRUE,
                       debug = FALSE,
                       overwrite = TRUE) {
@@ -3324,6 +3305,17 @@ RIL_input <- function(dem,
                  .indent = 2L)
 
   # --- Attribute list. RIL closes the block with END LIST. ----------------
+  # RIL.f90 looks up 'AS2', 'PLAN' and 'SLOPE' attribute fields on the channel
+  # node list it builds from this block, and aborts if any is missing. Now
+  # that attribute_list can be supplied freely rather than always coming from
+  # ril_default_attributes() (which already includes all three), a
+  # caller-supplied list that omits one would otherwise write a file RIL.exe
+  # rejects at run time -- so append whichever are missing.
+  attribute_names <- vapply(attribute_list, function(a) a$name, character(1))
+  for (required in setdiff(c("AS2", "PLAN", "SLOPE"), attribute_names)) {
+    attribute_list <- c(attribute_list, list(attribute_spec(required)))
+  }
+
   writer$line("")
   writer$line("# Node attributes")
   write_attribute_list(writer, attribute_list,
@@ -3335,56 +3327,28 @@ RIL_input <- function(dem,
 
 #' Default attribute list for Fortran program ValleyFloor
 #'
-#' Reproduces the `ATTRIBUTE LIST` block of a working reference run (Cherry
-#' project): node and channel identifiers plus contributing area, and, when a
-#' precipitation raster is supplied, mean annual flow/width/depth chained via
-#' regression equations -- the same pattern [ril_default_attributes()] and
-#' [bldgrds_default_attributes()] use, with a different mean-annual-flow
-#' equation (that reference's own comment cites it as the Puget Sound
-#' regional equation: `Source: ...netrace_parameters.WWA5: Washington -
-#' Puget Sound`). Width and depth reuse the same Magirl and Olsen (2009)
-#' coefficients [ril_default_attributes()] does.
+#' Reproduces the bare identifier/area portion of the `ATTRIBUTE LIST` block
+#' of a working reference run (Cherry project): node and channel identifiers
+#' plus contributing area. That reference run's precipitation-dependent chain
+#' (mean annual precipitation feeding a Puget Sound regional mean-annual-flow
+#' equation -- Kresch, 1998, WRIR96-4208 -- and Magirl and Olsen, 2009, for
+#' channel width and depth) is NOT reproduced here -- see the note on
+#' [ril_default_attributes()]: a `precip_raster` is a property of the
+#' `MEAN ANNUAL PRECIP` attribute entry itself, supplied only via an
+#' attribute-list text file read with [read_attribute_list_file()] (see
+#' `valleyfloor_attributes_example.txt` in the UnstableSlopes repo).
 #'
-#' @param precip_raster Optional: mean annual precipitation raster. Omit to
-#'   get just the identifier/area attributes.
 #' @return A list of [attribute_spec()] objects.
 #' @seealso [valleyfloor_input()]
 #' @export
-valleyfloor_default_attributes <- function(precip_raster = NOFILE) {
+valleyfloor_default_attributes <- function() {
 
-  attribute_list <- list(
+  list(
     attribute_spec("NODE ID", output_field = "NODE_ID"),
     attribute_spec("CHANNEL ID"),
     attribute_spec("CONTRIBUTING AREA", len = 12, deccnt = 4,
                    output_field = "AREA_SQKM")
   )
-
-  if (is_missing_path(precip_raster)) return(attribute_list)
-
-  c(attribute_list, list(
-
-    attribute_spec("MEAN ANNUAL PRECIP",
-                   file = precip_raster,
-                   output_field = "MNANPRC_M"),
-
-    # Kresch, 1998, WRIR96-4208 (Puget Sound regional equation)
-    attribute_spec("MEAN ANNUAL FLOW",
-                   output_field = "MEANANNCMS",
-                   terms = equation_term(0.021612245,
-                                         AREA_SQKM = 0.933,
-                                         MNANPRC_M = 1.48)),
-
-    # Magirl and Olsen, 2009
-    attribute_spec("WIDTH",
-                   output_field = "WIDTH_M",
-                   replace = TRUE,
-                   terms = equation_term(7.350799, MEANANNCMS = 0.45)),
-
-    attribute_spec("DEPTH",
-                   output_field = "DEPTH_M",
-                   replace = TRUE,
-                   terms = equation_term(0.2621106, MEANANNCMS = 0.37))
-  ))
 }
 
 

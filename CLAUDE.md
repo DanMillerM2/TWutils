@@ -168,11 +168,25 @@ independently and there is no compiler or CI linking them.
   alongside the verified set. `bldgrds()` returns `0L` rather than a raster — there is still no
   single `OUTPUT ... RASTER` keyword naming "the" output.
   `bldgrds_default_attributes()` was rewritten to match: it now reproduces the reference file's own
-  attribute block (`ELEVATION`, `CONTRIBUTING AREA` → `AREA_SQKM`, then, when a `precip_raster` is
-  given, `MEAN ANNUAL PRECIP`/`MEAN ANNUAL FLOW`/`WIDTH`/`DEPTH` chained via the Lorenson, Marcus and
-  Roberts (1994) and White, McCullough, Justice and Kelsey (2011) equations — the same pattern
-  `ril_default_attributes()` uses for RIL, with different citations/coefficients) rather than the
+  bare `ELEVATION`/`CONTRIBUTING AREA` (→ `AREA_SQKM`) attributes, rather than the
   `NODE ID`/`ELEV_M`/`AREA_KM2`/`CHANNEL_ID`/`STRM_ORDER` list guessed from `bldGrds2.f90` earlier.
+  **Update:** `bldgrds_default_attributes()`, `ril_default_attributes()`, and
+  `valleyfloor_default_attributes()` originally also took a `precip_raster` argument, chaining it
+  into a `MEAN ANNUAL PRECIP`/`MEAN ANNUAL FLOW`/`WIDTH`/`DEPTH` block (Lorenson, Marcus and Roberts,
+  1994, and White, McCullough, Justice and Kelsey, 2011, for bldgrds; Kresch, 1998, and Magirl and
+  Olsen, 2009, for RIL/ValleyFloor) when one was supplied. That argument was removed from all three
+  functions: a precipitation raster is now solely a property of the `MEAN ANNUAL PRECIP` attribute
+  entry itself (its `FILE = ...` argument), so it can only be specified by writing that attribute —
+  and whatever depends on it — directly into an attribute-list text file consumed by
+  `read_attribute_list_file()`/`get_attribute_list()`, not as a separate top-level function argument.
+  These three functions now always return just the bare identifier/area list; the UnstableSlopes
+  repo's `*_attributes_example.txt` files carry the precipitation-dependent chains as worked
+  examples instead. `RIL_input()`'s own `attribute_list` default was also fixed at the same time —
+  it previously called `ril_default_attributes()` with a hardcoded Post Mortem project path
+  (`c:\work\data\postmortem\prism_wasp_m`) baked in as its default, the one place a wrapper's
+  default reached for a specific precip raster outside of an explicitly supplied attribute list;
+  it now calls `ril_default_attributes()` with no argument, like `bldgrds_input()`/
+  `bldgrds_enforce_input()`/`valleyfloor_input()` already did.
   The **node point shapefile still requires an explicit `ATTRIBUTE LIST` block** (bldgrds has no
   fallback for that case, unlike for the node-list database), the block still has to be the last
   thing in the file (`ReadInput()` reads it via a separate `input%readlist()` call made only after
