@@ -297,7 +297,12 @@ elev_deriv <- function(input_file = NOFILE,
     input_file <- makegrids_input(dem, length_scale, scratch_dir, rasters)
   }
 
-  if (run_makegrids) run_program("MakeGrids", input_file, executable_dir)
+  if (run_makegrids) {
+    check <- argument_checker()
+    check$directory(executable_dir, "executable_dir")
+    check$report()
+    run_program("MakeGrids", input_file, executable_dir)
+  }
 
   # terra::rast() accepts a vector of file names and returns one layer per
   # file, replacing the accumulate-with-c() loop.
@@ -383,7 +388,12 @@ contributing_area <- function(input_file = NOFILE,
     raster <- add_extension_if_missing(raster, "flt")
   }
 
-  if (run_partial) run_program("Partial", input_file, executable_dir)
+  if (run_partial) {
+    check <- argument_checker()
+    check$directory(executable_dir, "executable_dir")
+    check$report()
+    run_program("Partial", input_file, executable_dir)
+  }
 
   terra::rast(raster)
 }
@@ -459,7 +469,12 @@ bldgrds_nochannels <- function(input_file = NOFILE,
     raster <- add_extension_if_missing(raster, "flt")
   }
 
-  if (run_bldgrds) run_program("bldgrds", input_file, executable_dir)
+  if (run_bldgrds) {
+    check <- argument_checker()
+    check$directory(executable_dir, "executable_dir")
+    check$report()
+    run_program("bldgrds", input_file, executable_dir)
+  }
 
   terra::rast(raster)
 }
@@ -637,6 +652,9 @@ distance_to_road <- function(input_file = NOFILE,
   }
 
   if (run_distance_to_road) {
+    check <- argument_checker()
+    check$directory(executable_dir, "executable_dir")
+    check$report()
     run_program("distanceToRoad", input_file, executable_dir)
   }
 
@@ -825,7 +843,12 @@ DEV <- function(input_file = NOFILE,
     raster <- add_extension_if_missing(raster, "flt")
   }
 
-  if (run_dev) run_program("DEV", input_file, executable_dir)
+  if (run_dev) {
+    check <- argument_checker()
+    check$directory(executable_dir, "executable_dir")
+    check$report()
+    run_program("DEV", input_file, executable_dir)
+  }
 
   terra::rast(raster)
 }
