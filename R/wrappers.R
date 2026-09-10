@@ -193,6 +193,42 @@ keyword_value <- function(input_lines, pattern, default = NOFILE) {
 }
 
 
+#' --- Resolve executable_dir for a mode-1 wrapper call ---
+#'
+#' Mode 1 hands the Fortran program an already-written input file rather than
+#' building one, so this lets that file optionally pin its own executable
+#' location with an "EXECUTABLE DIR:" line. None of these programs' own
+#' keyword grammars define that keyword -- their SELECT CASE blocks have no
+#' CASE DEFAULT (confirmed for MakeGrids/partial; the same pattern holds
+#' elsewhere in this codebase), so an unrecognized keyword line like this one
+#' is silently ignored on the Fortran side rather than rejected.
+#'
+#' If the file supplies "EXECUTABLE DIR" and it names a directory that
+#' actually contains program_name.exe, that value wins over whatever the
+#' wrapper's own executable_dir argument was. A directory that exists but
+#' does not hold that specific executable does not count -- run_program()
+#' would only fail on it later, with a less specific message, so this checks
+#' for the exe itself rather than settling for dir.exists(). Otherwise the
+#' argument passes through unchanged -- including when it is itself missing
+#' or wrong, so the check$directory() call the wrapper makes afterwards
+#' still catches it and reports the error.
+#'
+#' @param input_lines A tibble from get_input_file().
+#' @param executable_dir The wrapper's own executable_dir argument.
+#' @param program_name Base name of the executable the wrapper will run,
+#'   without ".exe" -- the same value it passes to run_program().
+#' @return The directory to actually use.
+#' @noRd
+resolve_executable_dir <- function(input_lines, executable_dir, program_name) {
+  from_file <- keyword_value(input_lines, "EXECUTABLE DIR", default = NOFILE)
+  if (!is_missing_path(from_file) &&
+      file.exists(file.path(from_file, paste0(program_name, ".exe")))) {
+    return(from_file)
+  }
+  executable_dir
+}
+
+
 # =========================================================================
 # SECTION 1.  ELEVATION DERIVATIVES
 # =========================================================================
@@ -245,6 +281,7 @@ elev_deriv <- function(input_file = NOFILE,
     # / tibble() block, and errors on an empty or missing file itself.
     input_lines <- get_input_file(input_file)
     require_keywords(input_lines, c("DEM", "SCRATCH DIRECTORY", "LENGTH SCALE"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "MakeGrids")
 
     # Each GRID line carries the derivative type as its first argument and the
     # output file as its second.
@@ -360,6 +397,7 @@ contributing_area <- function(input_file = NOFILE,
     require_keywords(input_lines,
                      c("DEM", "SCRATCH DIR(ECTORY)?", "LENGTH SCALE",
                        "DURATION", "CONDUCTIVITY"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "Partial")
     raster <- add_extension_if_missing(
       keyword_value(input_lines, "OUTPUT RASTER"), "flt")
 
@@ -440,6 +478,7 @@ bldgrds_nochannels <- function(input_file = NOFILE,
     require_keywords(input_lines,
                      c("DEM", "SCRATCH DIRECTORY", "USE SMOOTHED ASPECT",
                        "PLAN CURVATURE LENGTH SCALE", "GRADIENT LENGTH SCALE"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "bldgrds")
     raster <- add_extension_if_missing(
       keyword_value(input_lines, "OUTPUT FLOW ACCUMULATION RASTER"), "flt")
 
@@ -623,6 +662,7 @@ distance_to_road <- function(input_file = NOFILE,
     input_lines <- get_input_file(input_file)
     require_keywords(input_lines,
                      c("DEM", "SCRATCH DIRECTORY", "RADIUS", "ROAD SHAPEFILE"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "distanceToRoad")
     raster <- add_extension_if_missing(
       keyword_value(input_lines, "OUTPUT RASTER"), "flt")
 
@@ -817,6 +857,7 @@ DEV <- function(input_file = NOFILE,
     # --- Mode 1: existing input file -------------------------------------
     input_lines <- get_input_file(input_file)
     require_keywords(input_lines, c("DEM", "SCRATCH DIRECTORY", "RADIUS"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "DEV")
     raster <- add_extension_if_missing(
       keyword_value(input_lines, "OUTPUT DEV RASTER"), "flt")
 
