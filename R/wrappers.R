@@ -350,8 +350,10 @@ contributing_area <- function(input_file = NOFILE,
 
     # --- Mode 1: existing input file -------------------------------------
     input_lines <- get_input_file(input_file)
+    # partial.f90's CASE ('SCRATCH DIRECTORY', 'SCRATCH DIR') accepts either
+    # spelling, so the check has to as well.
     require_keywords(input_lines,
-                     c("DEM", "SCRATCH DIRECTORY", "LENGTH SCALE",
+                     c("DEM", "SCRATCH DIR(ECTORY)?", "LENGTH SCALE",
                        "DURATION", "CONDUCTIVITY"))
     raster <- add_extension_if_missing(
       keyword_value(input_lines, "OUTPUT RASTER"), "flt")
