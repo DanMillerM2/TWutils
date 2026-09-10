@@ -4,27 +4,23 @@
 \alias{ril_default_attributes}
 \title{The attribute list from the reference RIL input file}
 \usage{
-ril_default_attributes(precip_raster = NOFILE)
-}
-\arguments{
-\item{precip_raster}{Mean annual precipitation raster. When absent, the four
-dependent attributes are omitted.}
+ril_default_attributes()
 }
 \value{
 A list of \code{\link[=attribute_spec]{attribute_spec()}} objects.
 }
 \description{
-Reproduces the attribute block of the Post Mortem RIL run, a working
-configuration with published hydraulic-geometry equations.
-}
-\details{
-The last four attributes form a chain: mean annual precipitation is sampled
-from a raster, mean annual flow is computed from contributing area and that
-precipitation, and width and depth follow from the flow. They are therefore
-only included when a precipitation raster is supplied.
-}
-\references{
-Kresch, D.L., 1998, Water Resources Investigations Report 98-4160
-(mean annual flow).
-Magirl and Olsen, 2009 (channel width and depth).
+Reproduces the bare identifier/area/geometry attribute block of the Post
+Mortem RIL run. The reference run's precipitation-dependent chain (mean
+annual precipitation sampled from a raster, feeding published
+hydraulic-geometry equations for mean annual flow, channel width and
+depth -- Kresch, D.L., 1998, Water Resources Investigations Report
+98-4160, for mean annual flow; Magirl and Olsen, 2009, for channel width
+and depth) is NOT reproduced here: a \code{precip_raster} is a property of the
+\verb{MEAN ANNUAL PRECIP} attribute entry itself, not a separate argument to
+this function, so it can only be supplied by writing that attribute (and
+whatever depends on it) directly into an attribute-list text file read
+with \code{\link[=read_attribute_list_file]{read_attribute_list_file()}} -- see \code{RIL_attributes_example.txt} in
+the UnstableSlopes repo for a ready-to-copy example carrying that same
+chain.
 }

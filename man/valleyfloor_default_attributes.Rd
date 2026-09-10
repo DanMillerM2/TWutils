@@ -4,24 +4,22 @@
 \alias{valleyfloor_default_attributes}
 \title{Default attribute list for Fortran program ValleyFloor}
 \usage{
-valleyfloor_default_attributes(precip_raster = NOFILE)
-}
-\arguments{
-\item{precip_raster}{Optional: mean annual precipitation raster. Omit to
-get just the identifier/area attributes.}
+valleyfloor_default_attributes()
 }
 \value{
 A list of \code{\link[=attribute_spec]{attribute_spec()}} objects.
 }
 \description{
-Reproduces the \verb{ATTRIBUTE LIST} block of a working reference run (Cherry
-project): node and channel identifiers plus contributing area, and, when a
-precipitation raster is supplied, mean annual flow/width/depth chained via
-regression equations -- the same pattern \code{\link[=ril_default_attributes]{ril_default_attributes()}} and
-\code{\link[=bldgrds_default_attributes]{bldgrds_default_attributes()}} use, with a different mean-annual-flow
-equation (that reference's own comment cites it as the Puget Sound
-regional equation: \verb{Source: ...netrace_parameters.WWA5: Washington - Puget Sound}). Width and depth reuse the same Magirl and Olsen (2009)
-coefficients \code{\link[=ril_default_attributes]{ril_default_attributes()}} does.
+Reproduces the bare identifier/area portion of the \verb{ATTRIBUTE LIST} block
+of a working reference run (Cherry project): node and channel identifiers
+plus contributing area. That reference run's precipitation-dependent chain
+(mean annual precipitation feeding a Puget Sound regional mean-annual-flow
+equation -- Kresch, 1998, WRIR96-4208 -- and Magirl and Olsen, 2009, for
+channel width and depth) is NOT reproduced here -- see the note on
+\code{\link[=ril_default_attributes]{ril_default_attributes()}}: a \code{precip_raster} is a property of the
+\verb{MEAN ANNUAL PRECIP} attribute entry itself, supplied only via an
+attribute-list text file read with \code{\link[=read_attribute_list_file]{read_attribute_list_file()}} (see
+\code{valleyfloor_attributes_example.txt} in the UnstableSlopes repo).
 }
 \seealso{
 \code{\link[=valleyfloor_input]{valleyfloor_input()}}

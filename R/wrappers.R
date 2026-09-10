@@ -252,7 +252,11 @@ elev_deriv <- function(input_file = NOFILE,
     grid_arguments <- lapply(grid_lines,
                              function(i) parse_args(get_args(input_lines, i)))
     raster_types <- vapply(grid_arguments, function(a) a$Value[1], character(1))
-    raster_files <- vapply(grid_arguments, function(a) a$Value[2], character(1))
+    # makegrids writes .flt on disk but the GRID line, like every raster
+    # argument, names the file without an extension; add it back before
+    # reading, the same way modes 2 and 3 already do.
+    raster_files <- add_extension_if_missing(
+      vapply(grid_arguments, function(a) a$Value[2], character(1)), "flt")
 
   } else if (is_missing_path(dem)) {
 

@@ -58,8 +58,7 @@ RIL_input(
   out_prof = NOFILE,
   out_nodes = NOFILE,
   out_zero_order = NOFILE,
-  attribute_list =
-    ril_default_attributes("c:\\\\work\\\\data\\\\postmortem\\\\prism_wasp_m"),
+  attribute_list = ril_default_attributes(),
   use_ltd = TRUE,
   debug = FALSE,
   overwrite = TRUE

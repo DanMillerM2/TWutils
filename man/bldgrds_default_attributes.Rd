@@ -4,12 +4,7 @@
 \alias{bldgrds_default_attributes}
 \title{The attribute list bldgrds falls back to when none is supplied}
 \usage{
-bldgrds_default_attributes(precip_raster = NOFILE)
-}
-\arguments{
-\item{precip_raster}{Mean annual precipitation raster. When absent, the
-four dependent attributes (mean annual precipitation and flow, width,
-depth) are omitted.}
+bldgrds_default_attributes()
 }
 \value{
 A list of \code{\link[=attribute_spec]{attribute_spec()}} objects.
@@ -17,14 +12,14 @@ A list of \code{\link[=attribute_spec]{attribute_spec()}} objects.
 \description{
 bldgrds builds a channel node-list database (and, if requested, a node
 point shapefile) via the same \code{attributeList} machinery RIL uses
-(\code{ChannelNode_Module.f90}). This reproduces the attribute block of a
-working Sprague-River reference run, giving each node its elevation and
-contributing area, then, when a precipitation raster is supplied, chaining
-mean annual precipitation into mean annual flow and published regional
-hydraulic-geometry equations for channel width and depth -- the same
-pattern \code{\link[=ril_default_attributes]{ril_default_attributes()}} uses for RIL, with different citations.
-}
-\references{
-Lorenson, Marcus and Roberts, 1994 (mean annual flow).
-White, McCullough, Justice and Kelsey, 2011 (channel width and depth).
+(\code{ChannelNode_Module.f90}). This reproduces the bare elevation/area
+attribute block of a working Sprague-River reference run. That reference
+run's precipitation-dependent chain (mean annual precipitation feeding
+Lorenson, Marcus and Roberts, 1994, for mean annual flow, and White,
+McCullough, Justice and Kelsey, 2011, for channel width and depth) is NOT
+reproduced here -- see the note on \code{\link[=ril_default_attributes]{ril_default_attributes()}}: a
+\code{precip_raster} is a property of the \verb{MEAN ANNUAL PRECIP} attribute entry
+itself, supplied only via an attribute-list text file read with
+\code{\link[=read_attribute_list_file]{read_attribute_list_file()}} (see \code{bldgrds_attributes_example.txt} in the
+UnstableSlopes repo).
 }
