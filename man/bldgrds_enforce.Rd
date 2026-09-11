@@ -5,6 +5,7 @@
 \title{--- bldgrds_enforce, Enforce an existing channel network onto a DEM ---}
 \usage{
 bldgrds_enforce(
+  input_file = NOFILE,
   dem = NOFILE,
   scratch_dir = NOFILE,
   channel_mask = NOFILE,
@@ -13,6 +14,11 @@ bldgrds_enforce(
 )
 }
 \arguments{
+\item{input_file}{Character: an existing bldgrds "enforce" input file
+(optional). Selects mode 1 -- \code{dem}, \code{scratch_dir}, \code{channel_mask} and
+\code{...} are all ignored in that case, since the file already carries
+everything the program needs.}
+
 \item{dem}{Character: file name (full path) of the DEM.}
 
 \item{scratch_dir}{Character: scratch directory. The bldgrds input file is
@@ -26,7 +32,8 @@ excavation depth/radius, the node point shapefile request, optional
 drainage-wing/HAND/TWI rasters, and the attribute list.}
 
 \item{executable_dir}{Character: directory holding bldgrds.exe. There is
-no default location: it must always be supplied.}
+no default location: it must always be supplied, unless \code{input_file}
+supplies its own \verb{EXECUTABLE DIR} keyword.}
 }
 \value{
 0 on success. Stops with a message on any failure.
@@ -35,15 +42,31 @@ no default location: it must always be supplied.}
 A wrapper for Fortran program bldgrds, run in its "enforce an existing
 channel network" mode: rather than initiating new channels from area-
 slope/plan-curvature/local-relief thresholds (see \code{\link[=bldgrds]{bldgrds()}}), it
-excavates a previously-mapped channel-network polyline shapefile
-(\code{channel_mask}) into the DEM and traces the node-list database from that
-network alone -- \verb{NO NEW CHANNELS} is always written, precluding any
-channel initiation outside \code{channel_mask}.
+enforces a previously-mapped channel-network polyline shapefile
+(\code{channel_mask}) into the DEM flow directions and traces the node-list
+database from that network alone -- \verb{NO NEW CHANNELS} is always written,
+precluding any channel initiation outside \code{channel_mask}.
 }
 \details{
 Every tuning parameter beyond the three named here is passed straight
 through to \code{\link[=bldgrds_enforce_input]{bldgrds_enforce_input()}}, which documents them and supplies
 defaults matching a working reference run (Skykomish project).
+
+Also accepts an existing input file (mode 1), the same as \code{\link[=elev_deriv]{elev_deriv()}},
+\code{\link[=contributing_area]{contributing_area()}}, \code{\link[=bldgrds_nochannels]{bldgrds_nochannels()}}, \code{\link[=distance_to_road]{distance_to_road()}} and
+\code{\link[=DEV]{DEV()}}: supplying \code{input_file} skips building one and runs bldgrds.exe
+against it directly, after checking it carries the keywords an "enforce"
+file must have (\verb{DEM FILE}, \code{SCRATCH}, \verb{CHANNEL MASK}, \verb{NO NEW CHANNELS}
+-- note these differ from the \code{DEM}/\verb{SCRATCH DIRECTORY} keywords those
+other five wrappers check for, since bldgrds_input()/
+bldgrds_enforce_input() write a different keyword grammar entirely).
+The file may also pin its own executable location with an
+\verb{EXECUTABLE DIR:} line; see \code{\link[=resolve_executable_dir]{resolve_executable_dir()}}.
+
+Unlike those five wrappers, though, there is still no mode 3 (read-only)
+here, and mode 1 returns \code{0L} just like mode 2 already does: as the
+\verb{@return} below notes, bldgrds has no single output raster for either
+mode to read back afterwards.
 }
 \seealso{
 \code{\link[=bldgrds_enforce_input]{bldgrds_enforce_input()}}, \code{\link[=bldgrds]{bldgrds()}}, \code{\link[=bldgrds_nochannels]{bldgrds_nochannels()}}

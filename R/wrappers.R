@@ -579,15 +579,35 @@ bldgrds <- function(dem = NOFILE,
 #' A wrapper for Fortran program bldgrds, run in its "enforce an existing
 #' channel network" mode: rather than initiating new channels from area-
 #' slope/plan-curvature/local-relief thresholds (see [bldgrds()]), it
-#' excavates a previously-mapped channel-network polyline shapefile
-#' (`channel_mask`) into the DEM and traces the node-list database from that
-#' network alone -- `NO NEW CHANNELS` is always written, precluding any
-#' channel initiation outside `channel_mask`.
+#' enforces a previously-mapped channel-network polyline shapefile
+#' (`channel_mask`) into the DEM flow directions and traces the node-list 
+#' database from that network alone -- `NO NEW CHANNELS` is always written, 
+#' precluding any channel initiation outside `channel_mask`.
 #'
 #' Every tuning parameter beyond the three named here is passed straight
 #' through to [bldgrds_enforce_input()], which documents them and supplies
 #' defaults matching a working reference run (Skykomish project).
 #'
+#' Also accepts an existing input file (mode 1), the same as [elev_deriv()],
+#' [contributing_area()], [bldgrds_nochannels()], [distance_to_road()] and
+#' [DEV()]: supplying `input_file` skips building one and runs bldgrds.exe
+#' against it directly, after checking it carries the keywords an "enforce"
+#' file must have (`DEM FILE`, `SCRATCH`, `CHANNEL MASK`, `NO NEW CHANNELS`
+#' -- note these differ from the `DEM`/`SCRATCH DIRECTORY` keywords those
+#' other five wrappers check for, since bldgrds_input()/
+#' bldgrds_enforce_input() write a different keyword grammar entirely).
+#' The file may also pin its own executable location with an
+#' `EXECUTABLE DIR:` line; see [resolve_executable_dir()].
+#'
+#' Unlike those five wrappers, though, there is still no mode 3 (read-only)
+#' here, and mode 1 returns `0L` just like mode 2 already does: as the
+#' `@return` below notes, bldgrds has no single output raster for either
+#' mode to read back afterwards.
+#'
+#' @param input_file Character: an existing bldgrds "enforce" input file
+#'   (optional). Selects mode 1 -- `dem`, `scratch_dir`, `channel_mask` and
+#'   `...` are all ignored in that case, since the file already carries
+#'   everything the program needs.
 #' @param dem Character: file name (full path) of the DEM.
 #' @param scratch_dir Character: scratch directory. The bldgrds input file is
 #'   written here.
@@ -597,29 +617,46 @@ bldgrds <- function(dem = NOFILE,
 #'   excavation depth/radius, the node point shapefile request, optional
 #'   drainage-wing/HAND/TWI rasters, and the attribute list.
 #' @param executable_dir Character: directory holding bldgrds.exe. There is
-#'   no default location: it must always be supplied.
+#'   no default location: it must always be supplied, unless `input_file`
+#'   supplies its own `EXECUTABLE DIR` keyword.
 #'
 #' @return 0 on success. Stops with a message on any failure.
 #'
 #' @seealso [bldgrds_enforce_input()], [bldgrds()], [bldgrds_nochannels()]
 #' @export
-bldgrds_enforce <- function(dem = NOFILE,
+bldgrds_enforce <- function(input_file = NOFILE,
+                            dem = NOFILE,
                             scratch_dir = NOFILE,
                             channel_mask = NOFILE,
                             ...,
                             executable_dir = NULL) {
 
+  if (!is_missing_path(input_file)) {
+
+    # --- Mode 1: an existing input file tells us everything -----------------
+    input_lines <- get_input_file(input_file)
+    require_keywords(input_lines,
+                     c("DEM FILE", "SCRATCH", "CHANNEL MASK", "NO NEW CHANNELS"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "bldgrds")
+
+  } else {
+
+    # --- Mode 2: build an input file, then run bldgrds -----------------------
+    check <- argument_checker()
+    check$input_file(dem, "dem")
+    check$directory(scratch_dir, "scratch_dir")
+    check$input_file(channel_mask, "channel_mask", extensions = "shp")
+    check$report()
+
+    input_file <- bldgrds_enforce_input(dem = dem,
+                                        scratch_dir = scratch_dir,
+                                        channel_mask = channel_mask,
+                                        ...)
+  }
+
   check <- argument_checker()
-  check$input_file(dem, "dem")
-  check$directory(scratch_dir, "scratch_dir")
-  check$input_file(channel_mask, "channel_mask", extensions = "shp")
+  check$directory(executable_dir, "executable_dir")
   check$report()
-
-  input_file <- bldgrds_enforce_input(dem = dem,
-                                      scratch_dir = scratch_dir,
-                                      channel_mask = channel_mask,
-                                      ...)
-
   run_program("bldgrds", input_file, executable_dir)
   0L
 }
