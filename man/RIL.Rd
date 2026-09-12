@@ -5,6 +5,7 @@
 \title{---  , Delineate a channel network and its riparian landforms ---}
 \usage{
 RIL(
+  input_file = NOFILE,
   dem = NOFILE,
   scratch_dir = NOFILE,
   out_RIL = NOFILE,
@@ -13,6 +14,11 @@ RIL(
 )
 }
 \arguments{
+\item{input_file}{Character: an existing RIL input file (optional).
+Selects mode 1 -- \code{dem}, \code{scratch_dir}, \code{out_RIL} and \code{...} are all
+ignored in that case, since the file already carries everything the
+program needs.}
+
 \item{dem}{Character: input DEM (full path).}
 
 \item{scratch_dir}{Character: scratch directory. The RIL input file is
@@ -25,7 +31,8 @@ optional input and output rasters, the road shapefile, and
 \code{attribute_list}.}
 
 \item{executable_dir}{Character: directory holding RIL.exe. There is no
-default location: it must always be supplied.}
+default location: it must always be supplied, unless \code{input_file}
+supplies its own \verb{EXECUTABLE DIR} keyword.}
 }
 \value{
 A \code{SpatRaster} of the output RIL classes.
@@ -45,6 +52,18 @@ raster name.
 
 Existence of the optional input rasters and the road shapefile is checked
 inside \code{\link[=RIL_input]{RIL_input()}}, which names the offending argument if one is missing.
+
+Also accepts an existing input file (mode 1), the same as \code{\link[=elev_deriv]{elev_deriv()}},
+\code{\link[=contributing_area]{contributing_area()}}, \code{\link[=bldgrds_nochannels]{bldgrds_nochannels()}}, \code{\link[=distance_to_road]{distance_to_road()}},
+\code{\link[=DEV]{DEV()}}, \code{\link[=bldgrds_enforce]{bldgrds_enforce()}} and \code{\link[=valleyfloor]{valleyfloor()}}: supplying \code{input_file}
+skips building one and runs RIL.exe against it directly, after checking it
+carries \code{DEM}, \verb{SCRATCH DIRECTORY}, \code{RADIUS} and \verb{OUTPUT RIL RASTER}
+keywords -- the last one read back to know which raster to return
+afterward, the same way \code{\link[=contributing_area]{contributing_area()}}/\code{\link[=DEV]{DEV()}}/\code{\link[=distance_to_road]{distance_to_road()}}
+read back their own single output keyword. \code{dem}, \code{scratch_dir}, \code{out_RIL}
+and \code{...} are all ignored in that case. The file may also pin its own
+executable location with an \verb{EXECUTABLE DIR:} line; see
+\code{\link[=resolve_executable_dir]{resolve_executable_dir()}}.
 }
 \seealso{
 \code{\link[=RIL_input]{RIL_input()}}, \code{\link[=ril_attribute]{ril_attribute()}}, \code{\link[=ril_term]{ril_term()}},

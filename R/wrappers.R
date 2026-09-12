@@ -1540,6 +1540,22 @@ quantiles <- function(in_raster = NOFILE,
 #' Existence of the optional input rasters and the road shapefile is checked
 #' inside [RIL_input()], which names the offending argument if one is missing.
 #'
+#' Also accepts an existing input file (mode 1), the same as [elev_deriv()],
+#' [contributing_area()], [bldgrds_nochannels()], [distance_to_road()],
+#' [DEV()], [bldgrds_enforce()] and [valleyfloor()]: supplying `input_file`
+#' skips building one and runs RIL.exe against it directly, after checking it
+#' carries `DEM`, `SCRATCH DIRECTORY`, `RADIUS` and `OUTPUT RIL RASTER`
+#' keywords -- the last one read back to know which raster to return
+#' afterward, the same way [contributing_area()]/[DEV()]/[distance_to_road()]
+#' read back their own single output keyword. `dem`, `scratch_dir`, `out_RIL`
+#' and `...` are all ignored in that case. The file may also pin its own
+#' executable location with an `EXECUTABLE DIR:` line; see
+#' [resolve_executable_dir()].
+#'
+#' @param input_file Character: an existing RIL input file (optional).
+#'   Selects mode 1 -- `dem`, `scratch_dir`, `out_RIL` and `...` are all
+#'   ignored in that case, since the file already carries everything the
+#'   program needs.
 #' @param dem Character: input DEM (full path).
 #' @param scratch_dir Character: scratch directory. The RIL input file is
 #'   written here.
@@ -1548,7 +1564,8 @@ quantiles <- function(in_raster = NOFILE,
 #'   optional input and output rasters, the road shapefile, and
 #'   `attribute_list`.
 #' @param executable_dir Character: directory holding RIL.exe. There is no
-#'   default location: it must always be supplied.
+#'   default location: it must always be supplied, unless `input_file`
+#'   supplies its own `EXECUTABLE DIR` keyword.
 #'
 #' @return A \code{SpatRaster} of the output RIL classes.
 #'
@@ -1556,30 +1573,49 @@ quantiles <- function(in_raster = NOFILE,
 #' @seealso [RIL_input()], [ril_attribute()], [ril_term()],
 #'   [ril_default_attributes()]
 #' @export
-RIL <- function(dem = NOFILE,
+RIL <- function(input_file = NOFILE,
+                dem = NOFILE,
                 scratch_dir = NOFILE,
                 out_RIL = NOFILE,
                 ...,
                 executable_dir = NULL) {
 
-  # Only the three arguments this wrapper names itself are checked here; the
-  # rest are validated by RIL_input(), which knows which are paths and which
-  # are thresholds. Anything misspelled in ... surfaces there as an
-  # "unused argument" error rather than being silently dropped.
+  if (!is_missing_path(input_file)) {
+
+    # --- Mode 1: an existing input file tells us everything -----------------
+    input_lines <- get_input_file(input_file)
+    require_keywords(input_lines,
+                     c("DEM", "SCRATCH DIRECTORY", "RADIUS", "OUTPUT RIL RASTER"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "RIL")
+    out_RIL <- add_extension_if_missing(
+      keyword_value(input_lines, "OUTPUT RIL RASTER"), "flt")
+
+  } else {
+
+    # --- Mode 2: build an input file, then run RIL ---------------------------
+    # Only the three arguments this wrapper names itself are checked here; the
+    # rest are validated by RIL_input(), which knows which are paths and which
+    # are thresholds. Anything misspelled in ... surfaces there as an
+    # "unused argument" error rather than being silently dropped.
+    check <- argument_checker()
+    check$input_file(dem, "dem")
+    check$directory(scratch_dir, "scratch_dir")
+    check$supplied(out_RIL, "out_RIL")
+    check$report()
+
+    input_file <- RIL_input(dem = dem,
+                            scratch_dir = scratch_dir,
+                            out_RIL = out_RIL,
+                            ...)
+    out_RIL <- add_extension_if_missing(out_RIL, "flt")
+  }
+
   check <- argument_checker()
-  check$input_file(dem, "dem")
-  check$directory(scratch_dir, "scratch_dir")
-  check$supplied(out_RIL, "out_RIL")
+  check$directory(executable_dir, "executable_dir")
   check$report()
-
-  input_file <- RIL_input(dem = dem,
-                          scratch_dir = scratch_dir,
-                          out_RIL = out_RIL,
-                          ...)
-
   run_program("RIL", input_file, executable_dir)
 
-  terra::rast(add_extension_if_missing(out_RIL, "flt"))
+  terra::rast(out_RIL)
 }
 
 
