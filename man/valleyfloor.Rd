@@ -4,9 +4,19 @@
 \alias{valleyfloor}
 \title{Height above channel, valley width, and (optionally) flood inundation}
 \usage{
-valleyfloor(dem = NOFILE, scratch_dir = NOFILE, ..., executable_dir = NULL)
+valleyfloor(
+  input_file = NOFILE,
+  dem = NOFILE,
+  scratch_dir = NOFILE,
+  ...,
+  executable_dir = NULL
+)
 }
 \arguments{
+\item{input_file}{Character: an existing ValleyFloor input file (optional).
+Selects mode 1 -- \code{dem}, \code{scratch_dir} and \code{...} are all ignored in that
+case, since the file already carries everything the program needs.}
+
 \item{dem}{Character: input DEM (full path).}
 
 \item{scratch_dir}{Character: scratch directory. The ValleyFloor input
@@ -17,7 +27,8 @@ selection, valley-buffer/height-above/valley-width parameters, the
 optional output rasters, and \code{attribute_list}.}
 
 \item{executable_dir}{Character: directory holding ValleyFloor.exe. There
-is no default location: it must always be supplied.}
+is no default location: it must always be supplied, unless \code{input_file}
+supplies its own \verb{EXECUTABLE DIR} keyword.}
 }
 \value{
 The full path of the \verb{valleyfloor_<ID>.dat} binary data file
@@ -40,6 +51,23 @@ always written, whatever else was requested; every output raster
 program runs perfectly well with none of them requested. Ask for whichever
 rasters you want via \code{...} and read them back yourself afterward (with
 \code{\link[terra:rast]{terra::rast()}}, say) using the paths you supplied.
+
+Also accepts an existing input file (mode 1), the same as \code{\link[=elev_deriv]{elev_deriv()}},
+\code{\link[=contributing_area]{contributing_area()}}, \code{\link[=bldgrds_nochannels]{bldgrds_nochannels()}}, \code{\link[=distance_to_road]{distance_to_road()}},
+\code{\link[=DEV]{DEV()}} and \code{\link[=bldgrds_enforce]{bldgrds_enforce()}}: supplying \code{input_file} skips building one
+and runs ValleyFloor.exe against it directly, after checking it carries a
+\code{DEM} keyword (the only keyword this wrapper itself needs back -- the
+file's own validity, e.g. an \verb{ATTRIBUTE LIST} block, is ValleyFloor.f90's
+problem, not this wrapper's). \code{dem}, \code{scratch_dir} and \code{...} are all
+ignored in that case. The file may also pin its own executable location
+with an \verb{EXECUTABLE DIR:} line; see \code{\link[=resolve_executable_dir]{resolve_executable_dir()}}.
+
+\code{data_id}, needed to locate the \code{.dat} file afterward, is not its own
+keyword -- it's an optional \verb{DATA ID} subfield of \verb{ALL CHANNELS}, only
+ever written in \code{all_channels = TRUE} mode (see \code{\link[=valleyfloor_input]{valleyfloor_input()}}).
+Mode 1 reads it back the same way: from the \verb{ALL CHANNELS} line if present,
+falling back to the DEM-derived ID (as \code{\link[=valleyfloor_dat_file]{valleyfloor_dat_file()}} already
+does) for a \verb{CHANNEL LIST} file or one with no explicit \verb{DATA ID}.
 }
 \seealso{
 \code{\link[=valleyfloor_input]{valleyfloor_input()}}, \code{\link[=valleyfloor_dat_file]{valleyfloor_dat_file()}},
