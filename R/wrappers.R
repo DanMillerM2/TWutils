@@ -1139,86 +1139,71 @@ huntLS <- function(DEM = NOFILE,
 #'
 #' A wrapper for Fortran program LShunter, which finds candidate landslide
 #' sites on a DoD using the outlier raster created by align. It works in two
-#' rounds, so most thresholds come in pairs.
+#' rounds, so most thresholds come in pairs. LShunter operates in one of two
+#' modes, depending on whether `input_file` is supplied:
+#' \enumerate{
+#'   \item As a wrapper for the LShunter executable, with an existing
+#'     LShunter input file.
+#'   \item As a wrapper for LShunter, with the input file constructed here.
+#' }
 #'
-#' @param DEM Character: elevation raster. Needed only when no gradient raster
-#'   is supplied.
+#' @param input_file Character: an existing LShunter input file (optional).
+#'   Selects mode 1; it may also pin its own executable directory with an
+#'   `EXECUTABLE DIR:` line -- see [resolve_executable_dir()].
 #' @param Outlier Character: outlier raster (.flt) created by align.
-#' @param threshold1,threshold2 Numeric: outlier thresholds, 1st and 2nd round.
-#' @param Gradient Character: input gradient raster (.flt), optional.
-#' @param min1,min2 Numeric: minimum gradient, 1st and 2nd round.
 #' @param Accum Character: input flow accumulation raster (.flt).
-#' @param maxAccum1,maxAccum2 Numeric: maximum flow accumulation, 1st and 2nd
-#'   round.
-#' @param Roads Character: input road shapefile, optional.
-#' @param road_buffer Numeric: buffer in meters around roads.
-#' @param minSize Numeric: minimum patch size in square meters.
-#' @param GradLength Numeric: length in meters over which to calculate
-#'   gradient. Needed only when no gradient raster is supplied.
-#' @param OutGrad Character: output gradient raster (.flt), optional.
 #' @param OutPatch Character: output patch raster (.flt).
 #' @param ScratchDir Character: scratch directory.
+#' @param ... Further arguments passed to [LShunterInput()]: `DEM`,
+#'   `threshold1`/`threshold2`, `Gradient`, `min1`/`min2`, `maxAccum1`/
+#'   `maxAccum2`, `Roads`/`road_buffer`, `MinSize`, `GradLength`, `OutGrad`.
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'
 #' @return 0 on success. Stops with a message on any failure.
 #' @export
-LShunter <- function(DEM = NOFILE,
+LShunter <- function(input_file = NOFILE,
                      Outlier = NOFILE,
-                     threshold1 = -9999,
-                     threshold2 = -9999,
-                     Gradient = NOFILE,
-                     min1 = -9999,
-                     min2 = -9999,
                      Accum = NOFILE,
-                     maxAccum1 = -9999,
-                     maxAccum2 = -9999,
-                     Roads = NOFILE,
-                     road_buffer = -9999,
-                     minSize = -9999,
-                     GradLength = -9999,
-                     OutGrad = NOFILE,
                      OutPatch = NOFILE,
                      ScratchDir = NOFILE,
+                     ...,
                      Executable_dir = NOFILE) {
 
-  check <- argument_checker()
-  check$directory(ScratchDir, "ScratchDir")
-  check$directory(Executable_dir, "Executable_dir")
-  check$input_file(Outlier, "Outlier")
-  check$input_file(Accum,   "Accum")
-  check$number(threshold1, "threshold1", minimum = -Inf)
-  check$number(threshold2, "threshold2", minimum = -Inf)
-  check$number(min1, "min1")
-  check$number(min2, "min2")
-  check$number(maxAccum1, "maxAccum1")
-  check$number(maxAccum2, "maxAccum2")
-  check$number(minSize, "minSize")
-  check$supplied(OutPatch, "OutPatch")
+  if (!is_missing_path(input_file)) {
 
-  # Gradient is optional, but if it is absent LShunter has to compute it, and
-  # that needs both a DEM and a length scale.
-  if (is_missing_path(Gradient)) {
-    check$input_file(DEM, "DEM (required when no Gradient raster is given)")
-    check$number(GradLength,
-                 "GradLength (required when no Gradient raster is given)")
+    # --- Mode 1: an existing input file tells us everything -----------------
+    input_lines <- get_input_file(input_file)
+    require_keywords(input_lines,
+                     c("OUTLIER", "GRADIENT", "FLOW ACCUMULATION",
+                       "MINIMUM SIZE", "OUTPUT PATCH RASTER", "SCRATCH DIRECTORY"))
+    Executable_dir <- resolve_executable_dir(input_lines, Executable_dir, "LShunter")
+
   } else {
-    check$input_file(Gradient, "Gradient")
+
+    # --- Mode 2: build an input file, then run LShunter -----------------------
+    # Only the four arguments this wrapper names itself are checked here; the
+    # rest are validated by LShunterInput(), which knows which are paths and
+    # which are thresholds. Anything misspelled in ... surfaces there as an
+    # "unused argument" error rather than being silently dropped.
+    check <- argument_checker()
+    check$input_file(Outlier, "Outlier")
+    check$input_file(Accum,   "Accum")
+    check$directory(ScratchDir, "ScratchDir")
+    check$supplied(OutPatch, "OutPatch")
+    check$report()
+
+    LShunterInput(Outlier = Outlier,
+                  Accum = Accum,
+                  OutPatch = OutPatch,
+                  ScratchDir = ScratchDir,
+                  ...)
+
+    input_file <- input_file_for("LShunter", ScratchDir)
   }
 
-  # road_buffer only matters when a road layer is supplied.
-  if (!is_missing_path(Roads)) {
-    check$input_file(Roads, "Roads", extensions = "shp")
-    check$number(road_buffer, "road_buffer")
-  }
+  check <- argument_checker()
+  check$directory(Executable_dir, "Executable_dir")
   check$report()
-
-  LShunterInput(DEM, Outlier, threshold1, threshold2,
-                Gradient, min1, min2, Accum, maxAccum1, maxAccum2,
-                Roads, road_buffer, minSize, GradLength,
-                outGrad, OutPatch, ScratchDir)
-
-  input_file <- input_file_for("LShunter", ScratchDir)
-
   run_program("LShunter", input_file, Executable_dir)
   0L
 }

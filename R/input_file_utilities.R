@@ -1818,11 +1818,12 @@ huntLSinput <- function(DEM,
 #' @param maxAccum1,maxAccum2 Maximum flow accumulation for a patch, 1st and
 #'   2nd rounds.
 #' @param Roads Input road-layer shapefile (optional).
-#' @param road_buffer Buffer in meters around the road layer. Only used when
-#'   a road layer is supplied.
+#' @param road_buffer Buffer in meters around the road layer. Required when
+#'   a road layer is supplied; ignored (and may be left NULL) otherwise.
 #' @param MinSize Minimum patch size in square meters.
-#' @param GradLength Length in meters over which to calculate gradient. Only
-#'   used when no Gradient raster is supplied.
+#' @param GradLength Length in meters over which to calculate gradient.
+#'   Required when no Gradient raster is supplied; ignored (and may be left
+#'   NULL) otherwise.
 #' @param OutPatch Output patch raster (.flt).
 #' @param ScratchDir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
@@ -1840,13 +1841,29 @@ LShunterInput <- function(DEM = NOFILE,
                           maxAccum1,
                           maxAccum2,
                           Roads = NOFILE,
-                          road_buffer,
+                          road_buffer = NULL,
                           MinSize,
-                          GradLength,
+                          GradLength = NULL,
                           OutGrad = NOFILE,
                           OutPatch,
                           ScratchDir,
                           overwrite = TRUE) {
+
+  # Gradient is optional, but if it is absent LShunter has to compute it
+  # itself, which needs both a DEM and a length scale.
+  if (is_missing_path(Gradient) &&
+      (is_missing_path(DEM) || is.null(GradLength))) {
+    stop("LShunterInput(): Gradient was not supplied, so both DEM and ",
+         "GradLength are required (LShunter must compute gradient itself).",
+         call. = FALSE)
+  }
+
+  # road_buffer only matters -- and is only required -- when a road layer is
+  # supplied.
+  if (!is_missing_path(Roads) && is.null(road_buffer)) {
+    stop("LShunterInput(): Roads was supplied but road_buffer was not.",
+         call. = FALSE)
+  }
 
   writer <- input_writer("LShunter", ScratchDir,
                          "input_LShunter.txt", overwrite)
@@ -1880,7 +1897,7 @@ LShunterInput <- function(DEM = NOFILE,
 
   # --- Optional road layer, used to exclude road-related earth movement.
   writer$optional("ROAD SHAPEFILE",
-                  normalize_file_path(Roads),
+                  normalize_file_path(Roads, must_exist = TRUE, extensions = "shp"),
                   BUFFER = road_buffer)
 
   # --- Remaining parameter and outputs ------------------------------------
