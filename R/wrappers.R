@@ -193,6 +193,30 @@ keyword_value <- function(input_lines, pattern, default = NOFILE) {
 }
 
 
+#' --- Read a named subfield off a keyword line in an input file ---
+#'
+#' [keyword_value()] only returns the first, positional value on a matching
+#' line (e.g. the raster path after "OUTPUT RASTER:"). Some keywords instead
+#' carry their information as "PARAMETER = value" subfields alongside other
+#' subfields on the same line -- e.g. ValleyFloor's
+#' "ALL CHANNELS: MINIMUM WIDTH=1.0, WRITE DATA, DATA ID=Cherry, ..." -- and
+#' this reads one of those by name instead.
+#'
+#' @param input_lines A tibble from get_input_file().
+#' @param pattern Keyword pattern identifying the line.
+#' @param subfield Name of the "PARAMETER = value" subfield to read.
+#' @param default Value to return when the keyword or the subfield is absent.
+#' @return The subfield's value, or `default`.
+#' @noRd
+keyword_subfield_value <- function(input_lines, pattern, subfield, default = NOFILE) {
+  matching_lines <- keyword_line_numbers(input_lines, pattern)
+  if (length(matching_lines) == 0L) return(default)
+  parsed <- parse_args(get_args(input_lines, matching_lines[1]))
+  hit <- parsed$Value[parsed$Parameter == subfield]
+  if (length(hit) == 0L) default else hit[1]
+}
+
+
 #' --- Resolve executable_dir for a mode-1 wrapper call ---
 #'
 #' Mode 1 hands the Fortran program an already-written input file rather than
@@ -1605,6 +1629,26 @@ RIL <- function(dem = NOFILE,
 #' rasters you want via `...` and read them back yourself afterward (with
 #' [terra::rast()], say) using the paths you supplied.
 #'
+#' Also accepts an existing input file (mode 1), the same as [elev_deriv()],
+#' [contributing_area()], [bldgrds_nochannels()], [distance_to_road()],
+#' [DEV()] and [bldgrds_enforce()]: supplying `input_file` skips building one
+#' and runs ValleyFloor.exe against it directly, after checking it carries a
+#' `DEM` keyword (the only keyword this wrapper itself needs back -- the
+#' file's own validity, e.g. an `ATTRIBUTE LIST` block, is ValleyFloor.f90's
+#' problem, not this wrapper's). `dem`, `scratch_dir` and `...` are all
+#' ignored in that case. The file may also pin its own executable location
+#' with an `EXECUTABLE DIR:` line; see [resolve_executable_dir()].
+#'
+#' `data_id`, needed to locate the `.dat` file afterward, is not its own
+#' keyword -- it's an optional `DATA ID` subfield of `ALL CHANNELS`, only
+#' ever written in `all_channels = TRUE` mode (see [valleyfloor_input()]).
+#' Mode 1 reads it back the same way: from the `ALL CHANNELS` line if present,
+#' falling back to the DEM-derived ID (as [valleyfloor_dat_file()] already
+#' does) for a `CHANNEL LIST` file or one with no explicit `DATA ID`.
+#'
+#' @param input_file Character: an existing ValleyFloor input file (optional).
+#'   Selects mode 1 -- `dem`, `scratch_dir` and `...` are all ignored in that
+#'   case, since the file already carries everything the program needs.
 #' @param dem Character: input DEM (full path).
 #' @param scratch_dir Character: scratch directory. The ValleyFloor input
 #'   file is written here (the `.dat` output file is not -- see above).
@@ -1612,7 +1656,8 @@ RIL <- function(dem = NOFILE,
 #'   selection, valley-buffer/height-above/valley-width parameters, the
 #'   optional output rasters, and `attribute_list`.
 #' @param executable_dir Character: directory holding ValleyFloor.exe. There
-#'   is no default location: it must always be supplied.
+#'   is no default location: it must always be supplied, unless `input_file`
+#'   supplies its own `EXECUTABLE DIR` keyword.
 #'
 #' @return The full path of the `valleyfloor_<ID>.dat` binary data file
 #'   ValleyFloor wrote (or updated, if `read_data = TRUE`).
@@ -1620,27 +1665,53 @@ RIL <- function(dem = NOFILE,
 #' @seealso [valleyfloor_input()], [valleyfloor_dat_file()],
 #'   [valleyfloor_default_attributes()]
 #' @export
-valleyfloor <- function(dem = NOFILE,
+valleyfloor <- function(input_file = NOFILE,
+                        dem = NOFILE,
                         scratch_dir = NOFILE,
                         ...,
                         executable_dir = NULL) {
 
+  if (!is_missing_path(input_file)) {
+
+    # --- Mode 1: an existing input file tells us everything -----------------
+    input_lines <- get_input_file(input_file)
+    require_keywords(input_lines, c("DEM"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "ValleyFloor")
+    dem <- keyword_value(input_lines, "DEM")
+
+    # DATA ID only ever appears as a subfield of ALL CHANNELS (see
+    # valleyfloor_input()); a CHANNEL LIST file, or one with no explicit
+    # DATA ID, falls back to the DEM-derived ID.
+    all_channels <- length(keyword_line_numbers(input_lines, "ALL CHANNELS")) > 0L
+    data_id <- if (all_channels) {
+      keyword_subfield_value(input_lines, "ALL CHANNELS", "DATA ID", default = NOFILE)
+    } else {
+      NOFILE
+    }
+
+  } else {
+
+    # --- Mode 2: build an input file, then run ValleyFloor ------------------
+    check <- argument_checker()
+    check$input_file(dem, "dem")
+    check$directory(scratch_dir, "scratch_dir")
+    check$report()
+
+    input_file <- valleyfloor_input(dem = dem, scratch_dir = scratch_dir, ...)
+
+    # ValleyFloor.f90 only ever honors a DATA ID keyword when it is written --
+    # i.e. inside ALL CHANNELS mode (see valleyfloor_input()) -- so a
+    # channel_list = FALSE call always falls back to the DEM-derived ID,
+    # whatever data_id was passed here.
+    requested <- list(...)
+    all_channels <- if (is.null(requested$all_channels)) TRUE else requested$all_channels
+    data_id <- if (isTRUE(all_channels)) requested$data_id else NOFILE
+  }
+
   check <- argument_checker()
-  check$input_file(dem, "dem")
-  check$directory(scratch_dir, "scratch_dir")
+  check$directory(executable_dir, "executable_dir")
   check$report()
-
-  input_file <- valleyfloor_input(dem = dem, scratch_dir = scratch_dir, ...)
-
   run_program("ValleyFloor", input_file, executable_dir)
-
-  # ValleyFloor.f90 only ever honors a DATA ID keyword when it is written --
-  # i.e. inside ALL CHANNELS mode (see valleyfloor_input()) -- so a
-  # channel_list = FALSE call always falls back to the DEM-derived ID,
-  # whatever data_id was passed here.
-  requested <- list(...)
-  all_channels <- if (is.null(requested$all_channels)) TRUE else requested$all_channels
-  data_id <- if (isTRUE(all_channels)) requested$data_id else NOFILE
 
   valleyfloor_dat_file(dem, data_id)
 }
