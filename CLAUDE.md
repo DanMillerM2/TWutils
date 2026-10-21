@@ -26,34 +26,41 @@ fill in `DESCRIPTION`'s `Imports` field for a real build.
 Precompiled Windows `.exe` files live in `inst/DEMutilities/files/` (checked in via Git LFS per
 `.gitattributes`, which tracks `*.tif`, `*.exe`, `*.flt`). Only a subset of the executables the R code
 wraps are actually present there today: `MakeGrids.exe`, `partial.exe`, `LocalRelief.exe`,
-`bldgrds.exe`, `distanceToRoad.exe`, `PFA_debris_flow.exe`. `R/wrappers.R` also defines wrappers for
-`align`, `huntLS`, `LShunter`, `LS_poly`, `LSstats`, `samplePoints`, `modelDensity`, `quantiles` and `resample`,
-whose executables are not currently checked in — calls to those wrappers will fail at the
-`run_program()` step until the corresponding `.exe` is added. Unlike earlier versions of this code,
-there is no auto-discovery of the executable directory: every wrapper takes an explicit
-`executable_dir` argument and errors if it's missing.
+`bldgrds.exe`, `distanceToRoad.exe`, `PFA_debris_flow.exe` (plus the `libiomp5md.dll` OpenMP runtime
+they load). `R/wrappers.R` also defines wrappers for `align`, `huntLS`, `LShunter`, `LS_poly`,
+`LSstats`, `samplePoints`, `modelDensity`, `quantiles`, `resample`, `RIL` and `valleyfloor`
+(`ValleyFloor.exe`), whose executables are not currently checked in — calls to those wrappers will
+fail at the `run_program()` step until the corresponding `.exe` is added. Unlike earlier versions of
+this code, there is no auto-discovery of the executable directory: every wrapper takes an explicit
+`executable_dir` argument and errors if it's missing. The one exception is mode 1 (below): there,
+`resolve_executable_dir()` in `R/wrappers.R` lets the existing input file name its own location with
+an `EXECUTABLE DIR:` line, which wins over the argument — but only if that directory actually
+contains the program's `.exe`; otherwise the argument is used (and validated) as usual. The Fortran
+programs ignore that keyword, since their keyword parsers have no `CASE DEFAULT`.
 
 Each executable is driven by an ASCII "KEYWORD: argument" input file (grammar and read/write helpers
 in `R/input_file_utilities.R`: `get_input_file()`, `get_keyword()`, `get_args()`, `parse_args()`/
 `parse_arg()` for reading; `input_writer()` plus the `keyword()`/`optional()`/`line()` closures it
-returns for writing). Some programs (`RIL`, `netrace`) also take nested `ATTRIBUTE LIST` / `RASTER LIST`
+returns for writing). Some programs (`RIL`, `bldgrds`, `ValleyFloor`, `LSstats`, `netrace`) also take nested `ATTRIBUTE LIST` / `RASTER LIST`
 blocks, built with `attribute_spec()`/`equation_term()`/`raster_list_entry()` and written/read via
 `write_attribute_list()`/`write_raster_list()`/`get_attribute_list()`.
 
 The R-side wrapper functions in `R/wrappers.R` (`elev_deriv()`, `contributing_area()`,
-`bldgrds_nochannels()`, `distance_to_road()`, `DEV()`, `PFA_debris_flow()`, `resample()`, `align()`,
-`huntLS()`, `LShunter()`, `LS_poly()`, `samplePoints()`, `modelDensity()`, `quantiles()`, `bldgrds()`)
-mostly follow a shared three-mode pattern:
+`bldgrds_nochannels()`, `bldgrds()`, `bldgrds_enforce()`, `distance_to_road()`, `DEV()`,
+`PFA_debris_flow()`, `resample()`, `align()`, `huntLS()`, `LShunter()`, `LS_poly()`, `LSstats()`,
+`samplePoints()`, `modelDensity()`, `quantiles()`, `RIL()`, `valleyfloor()`) mostly follow a shared
+three-mode pattern:
 
 1. **Existing input file mode** — parse a pre-written keyword input file and invoke the executable.
 2. **Build-and-run mode** — given a DEM + parameters, write a new keyword input file (via the
    corresponding `*_input()` builder in `R/input_file_utilities.R`), then invoke the executable.
 3. **Read-only mode** — skip execution entirely and read already-computed `.flt` raster(s) from disk.
 
-(The later, more special-purpose wrappers — `align`, `huntLS`, `LShunter`, `LS_poly`, `samplePoints`,
-`modelDensity`, `quantiles`, `bldgrds` — only support mode 2: build the input file and run. `bldgrds`
-has no mode 3 for the same reason `RIL`/`huntLS`/etc. don't: there is no single output raster keyword
-to read back — see below.)
+(The later, more special-purpose wrappers — `align`, `huntLS`, `LS_poly`, `samplePoints`,
+`modelDensity`, `quantiles`, `bldgrds` — only support mode 2: build the input file and run.
+`LShunter`, `LSstats`, `bldgrds_enforce`, `RIL` and `valleyfloor` support modes 1 and 2 (pass
+`input_file` to select mode 1) but not mode 3. These have no mode 3 because there is no single
+output raster keyword to read back — see below.)
 
 Argument validation goes through `argument_checker()` in `R/wrappers.R`, which accumulates every
 problem with a call (missing file, missing directory, out-of-range number) and raises one error
@@ -237,7 +244,7 @@ independently and there is no compiler or CI linking them.
   checked into `inst/DEMutilities/files/` is `LocalRelief.exe`, built from the *different* program
   `GridUtilities/LocalRelief2.f90` (`PROGRAM LocalRelief`) — and `LocalRelief2.f90` has no
   `OUTPUT DEV RASTER` case at all (it only understands `OUTPUT LOCAL RASTER`). `DEV_input()` itself
-  is inconsistent about this: it calls `input_writer("LocalRelief", ...)` (line ~2511 of
+  is inconsistent about this: it calls `input_writer("LocalRelief", ...)` (line ~3028 of
   `input_file_utilities.R`) even though the file it writes, and the program `DEV()` actually runs,
   is `DEV`/`makeDEV`, not `LocalRelief`. Either add a real `DEV.exe` to `inst/DEMutilities/files/`, or
   rewrite `DEV()`/`DEV_input()` to target `LocalRelief.exe`'s actual keyword set.
@@ -283,8 +290,10 @@ independently and there is no compiler or CI linking them.
 - **`netrace` is wired up on the input-file side but has no R wrapper yet.** `INPUT_FILE_NAMES`
   carries a `"netrace"` entry and `input_file_utilities.R`'s `ATTRIBUTE LIST`/`RASTER LIST` writers
   exist to serve it, and `ChannelUtilities/Netrace/Netrace2.f90` is the corresponding Fortran source
-  — but `R/wrappers.R` has no `netrace()` function yet (only `RIL()` calls the shared
-  attribute/raster-list machinery so far).
+  — but `R/wrappers.R` has no `netrace()` function yet. `write_attribute_list()` is used by
+  `bldgrds_input()`, `bldgrds_enforce_input()`, `RIL_input()` and `valleyfloor_input()`;
+  `write_raster_list()` currently has no callers at all (`LSstats_input()` writes its own simpler
+  `RASTER LIST`/`FILE:`/`END LIST` block directly rather than using it).
 
 ## Key dependencies
 
