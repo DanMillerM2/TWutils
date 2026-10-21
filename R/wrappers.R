@@ -1327,6 +1327,103 @@ LS_poly <- function(DEM = NOFILE,
 }
 
 
+#' --- LSstats, Summarize rasters over landslide polygons and landforms ---
+#'
+#' A wrapper for Fortran program LSstats. For each raster in `rasters`,
+#' LSstats summarizes its values over each candidate landslide polygon from
+#' [LShunter()] and over each landform class from [RIL()], writing two csv
+#' files per raster; see [LSstats_input()] for their contents. LSstats
+#' operates in one of two modes, depending on whether `input_file` is
+#' supplied:
+#' \enumerate{
+#'   \item As a wrapper for the LSstats executable, with an existing LSstats
+#'     input file.
+#'   \item As a wrapper for LSstats, with the input file constructed here.
+#' }
+#'
+#' @param input_file Character: an existing LSstats input file (optional).
+#'   Selects mode 1; it may also pin its own executable directory with an
+#'   `EXECUTABLE DIR:` line -- see [resolve_executable_dir()]. All other
+#'   arguments except `executable_dir` are ignored in that case.
+#' @param polygon_raster Character: landslide polygon raster from LShunter.
+#' @param landform_raster Character: landform raster from RIL.
+#' @param rasters Character vector: rasters to summarize.
+#' @param out_csv Character: base name for the output csv files.
+#' @param scratch_dir Character: scratch directory. The LSstats input file is
+#'   written here.
+#' @param distance_raster Character: existing distance-to-floodplain-edge
+#'   raster (optional). If omitted, `radius` is required.
+#' @param radius Numeric: search radius in meters for computing distance to
+#'   the floodplain edge.
+#' @param out_distance_raster Character: output raster for the computed
+#'   distance (optional).
+#' @param executable_dir Character: directory holding LSstats.exe. There is
+#'   no default location: it must always be supplied, unless `input_file`
+#'   supplies its own `EXECUTABLE DIR` keyword.
+#'
+#' @return 0 on success. Stops with a message on any failure.
+#' @seealso [LSstats_input()]
+#' @export
+LSstats <- function(input_file = NOFILE,
+                    polygon_raster = NOFILE,
+                    landform_raster = NOFILE,
+                    rasters = character(0),
+                    out_csv = NOFILE,
+                    scratch_dir = NOFILE,
+                    distance_raster = NOFILE,
+                    radius = -9999,
+                    out_distance_raster = NOFILE,
+                    executable_dir = NOFILE) {
+
+  if (!is_missing_path(input_file)) {
+
+    # --- Mode 1: an existing input file tells us everything -----------------
+    input_lines <- get_input_file(input_file)
+    # LSstats.f90 accepts LANDSLIDE PATCH RASTER as an alias for LANDSLIDE POLYGON RASTER.
+    require_keywords(input_lines,
+                     c("LANDSLIDE (POLYGON|PATCH) RASTER", "LANDFORM RASTER",
+                       "RASTER LIST", "OUTPUT CSV", "SCRATCH DIRECTORY"))
+    executable_dir <- resolve_executable_dir(input_lines, executable_dir, "LSstats")
+
+  } else {
+
+    # --- Mode 2: build an input file, then run LSstats ------------------------
+    check <- argument_checker()
+    check$directory(scratch_dir, "scratch_dir")
+    check$input_file(polygon_raster,  "polygon_raster")
+    check$input_file(landform_raster, "landform_raster")
+    check$supplied(out_csv, "out_csv")
+    if (length(rasters) == 0L) check$note("rasters not specified")
+    raster_files <- unlist(rasters, use.names = FALSE)
+    for (i in seq_along(raster_files)) {
+      check$input_file(raster_files[i], paste0("rasters[", i, "]"))
+    }
+    # Distance to the floodplain edge is either read or computed; computing
+    # it needs a radius.
+    if (!is_missing_path(distance_raster)) {
+      check$input_file(distance_raster, "distance_raster")
+    } else {
+      check$number(radius, "radius")
+    }
+    check$report()
+
+    LSstats_input(polygon_raster, landform_raster, rasters, out_csv,
+                  scratch_dir,
+                  distance_raster = distance_raster,
+                  radius = radius,
+                  out_distance_raster = out_distance_raster)
+
+    input_file <- input_file_for("LSstats", scratch_dir)
+  }
+
+  check <- argument_checker()
+  check$directory(executable_dir, "executable_dir")
+  check$report()
+  run_program("LSstats", input_file, executable_dir)
+  0L
+}
+
+
 #' Generate point samples inside and outside landslide initiation zones
 #'
 #' A wrapper for Fortran program samplePoints. See [samplePointInput()] for a

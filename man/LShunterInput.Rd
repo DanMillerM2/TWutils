@@ -16,9 +16,9 @@ LShunterInput(
   maxAccum1,
   maxAccum2,
   Roads = NOFILE,
-  road_buffer,
+  road_buffer = NULL,
   MinSize,
-  GradLength,
+  GradLength = NULL,
   OutGrad = NOFILE,
   OutPatch,
   ScratchDir,
@@ -45,13 +45,14 @@ rounds, e.g. -5.0 then -1.5.}
 
 \item{Roads}{Input road-layer shapefile (optional).}
 
-\item{road_buffer}{Buffer in meters around the road layer. Only used when
-a road layer is supplied.}
+\item{road_buffer}{Buffer in meters around the road layer. Required when
+a road layer is supplied; ignored (and may be left NULL) otherwise.}
 
 \item{MinSize}{Minimum patch size in square meters.}
 
-\item{GradLength}{Length in meters over which to calculate gradient. Only
-used when no Gradient raster is supplied.}
+\item{GradLength}{Length in meters over which to calculate gradient.
+Required when no Gradient raster is supplied; ignored (and may be left
+NULL) otherwise.}
 
 \item{OutPatch}{Output patch raster (.flt).}
 

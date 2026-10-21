@@ -328,6 +328,7 @@ INPUT_FILE_NAMES <- c(
   "HuntLS"             = "input_huntls.txt",
   "LShunter"           = "input_LShunter.txt",
   "LS_poly"            = "input_LS_poly.txt",
+  "LSstats"            = "input_LSstats.txt",
   "samplePoints"       = "input_samplePoints.txt",
   "modelDensity"       = "input_modelDensity.txt",
   "quantiles"          = "input_quantiles.txt",
@@ -1995,6 +1996,95 @@ LS_poly_input <- function(DEM,
   writer$keyword("SCRATCH DIRECTORY", normalize_file_path(scratchDir))
 
   # The original assigned returnCode <- 0 but never returned it.
+  0L
+}
+
+
+#' Create an input file for Fortran program LSstats
+#'
+#' LSstats summarizes a set of rasters (e.g. elevation derivatives) over the
+#' candidate landslide polygons delineated by LShunter and over the landform
+#' classes delineated by RIL. For each listed raster it writes two csv files:
+#' `<out_csv>_<i>.csv`, with one row per landslide polygon (dominant landform,
+#' area, min/5/25/50/75/95 percent quantiles/max, and the shortest distance
+#' to a floodplain edge), and `<out_csv>_landforms_<i>.csv`, with the same
+#' quantiles for each landform class.
+#'
+#' Distance to the floodplain edge (landform class 1) is either read from
+#' `distance_raster`, or computed by LSstats out to `radius` and optionally
+#' written to `out_distance_raster`.
+#'
+#' @param polygon_raster Landslide polygon (patch) raster from LShunter.
+#' @param landform_raster Landform raster from RIL, classes numbered 1 to 10
+#'   with 1 = floodplain.
+#' @param rasters Character vector of rasters to summarize.
+#' @param out_csv Base name for the output csv files. Any ".csv" extension is
+#'   dropped, since LSstats appends `_<i>.csv` itself.
+#' @param scratch_dir Scratch directory.
+#' @param distance_raster Existing distance-to-floodplain-edge raster
+#'   (optional). If omitted, `radius` is required.
+#' @param radius Search radius in meters for computing distance to the
+#'   floodplain edge. Ignored when `distance_raster` is supplied.
+#' @param out_distance_raster Output raster for the computed distance
+#'   (optional; ignored when `distance_raster` is supplied).
+#' @param overwrite If TRUE, allow overwriting an existing input file.
+#'
+#' @return 0 on success.
+#' @export
+LSstats_input <- function(polygon_raster,
+                          landform_raster,
+                          rasters,
+                          out_csv,
+                          scratch_dir,
+                          distance_raster = NOFILE,
+                          radius = NULL,
+                          out_distance_raster = NOFILE,
+                          overwrite = TRUE) {
+
+  if (is_missing_path(distance_raster) && is.null(radius)) {
+    stop("LSstats_input(): distance_raster was not supplied, so radius is ",
+         "required (LSstats must compute distance to the floodplain edge).",
+         call. = FALSE)
+  }
+  if (length(rasters) == 0L) {
+    stop("LSstats_input(): no rasters supplied.", call. = FALSE)
+  }
+
+  writer <- input_writer("LSstats", scratch_dir,
+                         "input_LSstats.txt", overwrite)
+
+  # --- Polygons and landforms ---------------------------------------------
+  writer$keyword("LANDSLIDE POLYGON RASTER",
+                 normalize_raster_path(polygon_raster, must_exist = TRUE))
+  writer$keyword("LANDFORM RASTER",
+                 normalize_raster_path(landform_raster, must_exist = TRUE))
+
+  # --- Distance to floodplain edge: read it, or compute it ----------------
+  if (!is_missing_path(distance_raster)) {
+    writer$keyword("DISTANCE TO RASTER",
+                   normalize_raster_path(distance_raster, must_exist = TRUE))
+  } else {
+    writer$keyword("RADIUS", radius)
+    writer$optional("OUTPUT DISTANCE TO RASTER",
+                    normalize_raster_path(out_distance_raster))
+  }
+
+  # --- Rasters to summarize -----------------------------------------------
+  # Each entry is written as "FILE: path". A bare path would not do: LSstats
+  # reads each line with ReadLine, which would take the drive letter's colon
+  # as the end of a keyword. END LIST needs its colon for the same reason.
+  writer$keyword("RASTER LIST")
+  for (raster in unlist(rasters, use.names = FALSE)) {
+    writer$keyword("FILE", normalize_raster_path(raster, must_exist = TRUE),
+                   .indent = 2L)
+  }
+  writer$keyword("END LIST")
+
+  # --- Outputs ------------------------------------------------------------
+  writer$keyword("OUTPUT CSV",
+                 remove_extension(normalize_file_path(out_csv), "csv"))
+  writer$keyword("SCRATCH DIRECTORY", normalize_file_path(scratch_dir))
+
   0L
 }
 

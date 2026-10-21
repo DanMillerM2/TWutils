@@ -27,7 +27,7 @@ Precompiled Windows `.exe` files live in `inst/DEMutilities/files/` (checked in 
 `.gitattributes`, which tracks `*.tif`, `*.exe`, `*.flt`). Only a subset of the executables the R code
 wraps are actually present there today: `MakeGrids.exe`, `partial.exe`, `LocalRelief.exe`,
 `bldgrds.exe`, `distanceToRoad.exe`, `PFA_debris_flow.exe`. `R/wrappers.R` also defines wrappers for
-`align`, `huntLS`, `LShunter`, `LS_poly`, `samplePoints`, `modelDensity`, `quantiles` and `resample`,
+`align`, `huntLS`, `LShunter`, `LS_poly`, `LSstats`, `samplePoints`, `modelDensity`, `quantiles` and `resample`,
 whose executables are not currently checked in — calls to those wrappers will fail at the
 `run_program()` step until the corresponding `.exe` is added. Unlike earlier versions of this code,
 there is no auto-discovery of the executable directory: every wrapper takes an explicit
@@ -141,6 +141,13 @@ independently and there is no compiler or CI linking them.
   `INPUT FOS RASTER`, `OUTPUT NODE POINT SHAPEFILE`, `OUTPUT CSV FILE`, `OUTPUT INITIATION RASTER`,
   `SCRATCH DIRECTORY`) all match. `inFoS` is meant to come from `LandslideUtilities/FoS.f90`
   (`PROGRAM FactorOfSafety`), which has no R wrapper of its own yet.
+- `LSstats()` → `LandslideUtilities/LSstats.f90` (`PROGRAM LSstats`; no build project found under
+  `LandslideUtilities\Projects`, though the program's hardcoded default input path names one) —
+  `LSstats_input()`'s keywords (`LANDSLIDE POLYGON RASTER`, `LANDFORM RASTER`, `DISTANCE TO RASTER`
+  or `RADIUS` + optional `OUTPUT DISTANCE TO RASTER`, `RASTER LIST`/`END LIST`, `OUTPUT CSV`,
+  `SCRATCH DIRECTORY`) all match. Raster list entries are written as `FILE: path` because a bare
+  `c:\...` path would have its drive-letter colon read as a keyword terminator; `OUTPUT CSV` is a
+  base name (the program appends `_<i>.csv` / `_landforms_<i>.csv`), so `.csv` is stripped.
 - `samplePoints()` → `LandslideUtilities/sample.f90` (`PROGRAM samplePoints`, built by
   `LandslideUtilities\Projects\SamplePoints`) — `samplePointInput()`'s keywords
   (`INITIATION ZONE RASTER`, `SAMPLE AREA`, `BUFFER INSIDE`/`OUTSIDE`, `MARGIN`, `RATIO`, `NBINS`,

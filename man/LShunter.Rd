@@ -5,57 +5,31 @@
 \title{--- LShunter, Identify potential landslide sites from outlier patches ---}
 \usage{
 LShunter(
-  DEM = NOFILE,
+  input_file = NOFILE,
   Outlier = NOFILE,
-  threshold1 = -9999,
-  threshold2 = -9999,
-  Gradient = NOFILE,
-  min1 = -9999,
-  min2 = -9999,
   Accum = NOFILE,
-  maxAccum1 = -9999,
-  maxAccum2 = -9999,
-  Roads = NOFILE,
-  road_buffer = -9999,
-  minSize = -9999,
-  GradLength = -9999,
-  OutGrad = NOFILE,
   OutPatch = NOFILE,
   ScratchDir = NOFILE,
+  ...,
   Executable_dir = NOFILE
 )
 }
 \arguments{
-\item{DEM}{Character: elevation raster. Needed only when no gradient raster
-is supplied.}
+\item{input_file}{Character: an existing LShunter input file (optional).
+Selects mode 1; it may also pin its own executable directory with an
+\verb{EXECUTABLE DIR:} line -- see \code{\link[=resolve_executable_dir]{resolve_executable_dir()}}.}
 
 \item{Outlier}{Character: outlier raster (.flt) created by align.}
 
-\item{threshold1, threshold2}{Numeric: outlier thresholds, 1st and 2nd round.}
-
-\item{Gradient}{Character: input gradient raster (.flt), optional.}
-
-\item{min1, min2}{Numeric: minimum gradient, 1st and 2nd round.}
-
 \item{Accum}{Character: input flow accumulation raster (.flt).}
-
-\item{maxAccum1, maxAccum2}{Numeric: maximum flow accumulation, 1st and 2nd
-round.}
-
-\item{Roads}{Character: input road shapefile, optional.}
-
-\item{road_buffer}{Numeric: buffer in meters around roads.}
-
-\item{minSize}{Numeric: minimum patch size in square meters.}
-
-\item{GradLength}{Numeric: length in meters over which to calculate
-gradient. Needed only when no gradient raster is supplied.}
-
-\item{OutGrad}{Character: output gradient raster (.flt), optional.}
 
 \item{OutPatch}{Character: output patch raster (.flt).}
 
 \item{ScratchDir}{Character: scratch directory.}
+
+\item{...}{Further arguments passed to \code{\link[=LShunterInput]{LShunterInput()}}: \code{DEM},
+\code{threshold1}/\code{threshold2}, \code{Gradient}, \code{min1}/\code{min2}, \code{maxAccum1}/
+\code{maxAccum2}, \code{Roads}/\code{road_buffer}, \code{MinSize}, \code{GradLength}, \code{OutGrad}.}
 
 \item{Executable_dir}{Character: directory holding LShunter.exe.}
 }
@@ -65,5 +39,11 @@ gradient. Needed only when no gradient raster is supplied.}
 \description{
 A wrapper for Fortran program LShunter, which finds candidate landslide
 sites on a DoD using the outlier raster created by align. It works in two
-rounds, so most thresholds come in pairs.
+rounds, so most thresholds come in pairs. LShunter operates in one of two
+modes, depending on whether \code{input_file} is supplied:
+\enumerate{
+\item As a wrapper for the LShunter executable, with an existing
+LShunter input file.
+\item As a wrapper for LShunter, with the input file constructed here.
+}
 }
