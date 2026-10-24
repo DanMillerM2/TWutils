@@ -1652,6 +1652,11 @@ accum_input <- function(dem,
 #' @param outOutlier Output outlier raster (.flt).
 #' @param scratch_dir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
+#' @param convergence Stop iterating once an iteration changes the RMSE by
+#'   less than this many meters (CONVERGENCE); 0 omits the keyword, so every
+#'   iteration runs.
+#' @param minPoints Minimum regression points for a tile to be solved
+#'   (TILES MIN POINTS); 0 omits it, leaving Align's default (100000).
 #'
 #' @return The input file path, invisibly.
 #' @export
@@ -1676,7 +1681,9 @@ align_input <- function(refDTM,
                         outDif,
                         outOutlier,
                         scratch_dir,
-                        overwrite = TRUE) {
+                        overwrite = TRUE,
+                        convergence = 0,
+                        minPoints = 0) {
 
   writer <- input_writer("align", scratch_dir, "input_align.txt", overwrite)
 
@@ -1694,11 +1701,13 @@ align_input <- function(refDTM,
   # --- Solution parameters ------------------------------------------------
   writer$keyword("RADIUS", radius)
   writer$keyword("ITERATIONS", iterations)
+  if (convergence > 0) writer$keyword("CONVERGENCE", convergence)
   writer$keyword("K", k)
   writer$keyword("DAMPENER", dampener)
 
   # --- Tiling: the DTM is solved in overlapping tiles ---------------------
-  writer$keyword("TILES", X = tileNx, Y = tileNy, OVERLAP = overlap)
+  writer$keyword("TILES", X = tileNx, Y = tileNy, OVERLAP = overlap,
+                 `MIN POINTS` = if (minPoints > 0) minPoints)
 
   # --- Binning of elevation differences by slope and aspect ---------------
   writer$keyword("BINS",

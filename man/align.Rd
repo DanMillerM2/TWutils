@@ -27,7 +27,8 @@ align(
   outOutlier = NOFILE,
   scratch_dir = NOFILE,
   executable_dir = NOFILE,
-  program_name = "align"
+  program_name = "align",
+  convergence = 0
 )
 }
 \arguments{
@@ -76,6 +77,10 @@ slope and aspect.}
 \item{executable_dir}{Character: directory holding the executable.}
 
 \item{program_name}{Character: base name of the executable.}
+
+\item{convergence}{Numeric: optional. Stop iterating once an iteration
+changes the RMSE by less than this many meters; \code{iterations} is then the
+maximum. 0 (the default) always runs all \code{iterations}.}
 }
 \value{
 0 on success. Stops with a message on any failure.
