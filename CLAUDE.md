@@ -136,10 +136,16 @@ independently and there is no compiler or CI linking them.
   `OUTPUT PATCH RASTER`, `OUTPUT GRADIENT RASTER`, `OUTPUT TABLE`, `SCRATCH DIRECTORY`) matches a
   `CASE` in `HuntLS.f90`'s keyword parser exactly.
 - `LShunter()` → `LandslideUtilities/LShunter.f90` (`PROGRAM LShunter`, built by
-  `LandslideUtilities\Projects\LShunter`) — `LShunterInput()`'s keywords (`DEM`, `OUTLIER` w/
-  `THRESHOLD1`/`THRESHOLD2`, `GRADIENT` w/ `MIN1`/`MIN2`, `GRADIENT LENGTH SCALE`,
-  `FLOW ACCUMULATION` w/ `MAX1`/`MAX2`, `ROAD SHAPEFILE` w/ `BUFFER`, `MINIMUM SIZE`,
-  `OUTPUT PATCH RASTER`, `SCRATCH DIRECTORY`) all match.
+  `LandslideUtilities\Projects\LShunter`; LShunter 1.1, branch `LShunter_update` there) —
+  `LShunterInput()`'s keywords (`EXCEEDANCE RASTER` or `OUTLIER` w/ `THRESHOLD1`/`THRESHOLD2`,
+  `GRADIENT` w/ `FILE`/`MIN1`/`MIN2`/`UNITS`, `FLOW ACCUMULATION` w/ `MAX1`/`MAX2`,
+  `ROAD SHAPEFILE` w/ `BUFFER`, `MINIMUM SIZE`, `OUTPUT PATCH RASTER`, `SCRATCH DIRECTORY`) all
+  match. LShunter 1.1 requires the gradient raster Align uses (sin(slope), `UNITS = SIN` by
+  default) and no longer accepts `DEM`-based gradient (`GRADIENT LENGTH SCALE` and
+  `OUTPUT GRADIENT RASTER` stop the run), so `LShunterInput()` dropped `DEM`, `GradLength` and
+  `OutGrad` and requires `Gradient`; it takes exactly one of `Outlier` and `Exceedance`.
+  Tested end to end (2026-10-26) through UnstableSlopes' `R/LShunter.R` mode 2 with
+  `pkgload::load_all()`: the patch raster matched a direct LShunter run cell for cell.
 - `LS_poly()` → `LandslideUtilities/initPoly.f90` (`PROGRAM initPoly`, built by
   `LandslideUtilities\Projects\LS_poly` — note the project/wrapper name `LS_poly` doesn't match the
   file or `PROGRAM` name `initPoly`) — `LS_poly_input()`'s keywords (`DEM`,

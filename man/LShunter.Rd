@@ -7,6 +7,8 @@
 LShunter(
   input_file = NOFILE,
   Outlier = NOFILE,
+  Exceedance = NOFILE,
+  Gradient = NOFILE,
   Accum = NOFILE,
   OutPatch = NOFILE,
   ScratchDir = NOFILE,
@@ -19,7 +21,15 @@ LShunter(
 Selects mode 1; it may also pin its own executable directory with an
 \verb{EXECUTABLE DIR:} line -- see \code{\link[=resolve_executable_dir]{resolve_executable_dir()}}.}
 
-\item{Outlier}{Character: outlier raster (.flt) created by align.}
+\item{Outlier}{Character: outlier raster (.flt) created by align. Give
+exactly one of Outlier and Exceedance.}
+
+\item{Exceedance}{Character: exceedance probability raster (.flt) created
+by align (signed significance S = -log10(p)); recommended.}
+
+\item{Gradient}{Character: gradient raster (.flt) that align uses (align's
+OUTPUT GRADIENT RASTER: YES writes \if{html}{\out{<reference DEM>}}_grad\if{html}{\out{<RADIUS>}}m).
+Required in mode 2.}
 
 \item{Accum}{Character: input flow accumulation raster (.flt).}
 
@@ -27,9 +37,9 @@ Selects mode 1; it may also pin its own executable directory with an
 
 \item{ScratchDir}{Character: scratch directory.}
 
-\item{...}{Further arguments passed to \code{\link[=LShunterInput]{LShunterInput()}}: \code{DEM},
-\code{threshold1}/\code{threshold2}, \code{Gradient}, \code{min1}/\code{min2}, \code{maxAccum1}/
-\code{maxAccum2}, \code{Roads}/\code{road_buffer}, \code{MinSize}, \code{GradLength}, \code{OutGrad}.}
+\item{...}{Further arguments passed to \code{\link[=LShunterInput]{LShunterInput()}}:
+\code{threshold1}/\code{threshold2}, \code{GradientUnits}, \code{min1}/\code{min2},
+\code{maxAccum1}/\code{maxAccum2}, \code{Roads}/\code{road_buffer}, \code{MinSize}.}
 
 \item{Executable_dir}{Character: directory holding LShunter.exe.}
 }
@@ -38,9 +48,10 @@ Selects mode 1; it may also pin its own executable directory with an
 }
 \description{
 A wrapper for Fortran program LShunter, which finds candidate landslide
-sites on a DoD using the outlier raster created by align. It works in two
-rounds, so most thresholds come in pairs. LShunter operates in one of two
-modes, depending on whether \code{input_file} is supplied:
+sites on a DoD using a raster created by align: its exceedance probability
+raster (recommended) or its outlier raster, plus align's gradient raster.
+It works in two rounds, so most thresholds come in pairs. LShunter operates
+in one of two modes, depending on whether \code{input_file} is supplied:
 \enumerate{
 \item As a wrapper for the LShunter executable, with an existing
 LShunter input file.

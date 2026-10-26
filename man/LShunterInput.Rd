@@ -5,11 +5,12 @@
 \title{Create an input file for Fortran program LShunter}
 \usage{
 LShunterInput(
-  DEM = NOFILE,
-  Outlier,
+  Outlier = NOFILE,
+  Exceedance = NOFILE,
   threshold1,
   threshold2,
-  Gradient = NOFILE,
+  Gradient,
+  GradientUnits = "SIN",
   min1,
   min2,
   Accum,
@@ -18,25 +19,34 @@ LShunterInput(
   Roads = NOFILE,
   road_buffer = NULL,
   MinSize,
-  GradLength = NULL,
-  OutGrad = NOFILE,
   OutPatch,
   ScratchDir,
   overwrite = TRUE
 )
 }
 \arguments{
-\item{DEM}{Elevation raster. Only needed when no Gradient raster is
-supplied, in which case LShunter computes gradient itself.}
+\item{Outlier}{Outlier raster (.flt) created by Align (OUTPUT OUTLIER RASTER
+or OUTPUT DENSITY OUTLIER RASTER). Give exactly one of Outlier and
+Exceedance.}
 
-\item{Outlier}{Outlier raster (.flt) created by Align.}
+\item{Exceedance}{Exceedance probability raster (.flt) created by Align
+(OUTPUT EXCEEDANCE PROBABILITY RASTER): signed significance
+S = -log10(p), negative for loss. Recommended: its thresholds mean the same
+false-alarm rate on every kind of ground.}
 
-\item{threshold1, threshold2}{Maximum k value for a patch in the 1st and 2nd
-rounds, e.g. -5.0 then -1.5.}
+\item{threshold1, threshold2}{Maximum value for a patch in the 1st and 2nd
+rounds: outlier values (e.g. -5.0 then -2.5) or, with Exceedance, S
+values (e.g. -4 then -2, that is p <= 0.01\% then p <= 1\%).}
 
-\item{Gradient}{Input gradient raster (.flt) from MakeGrids (optional).}
+\item{Gradient}{Gradient raster (.flt): the one Align uses (Align's OUTPUT
+GRADIENT RASTER: YES writes \if{html}{\out{<reference DEM>}}_grad\if{html}{\out{<RADIUS>}}m). Required:
+LShunter no longer computes gradient itself.}
 
-\item{min1, min2}{Minimum gradient for a patch, 1st and 2nd rounds.}
+\item{GradientUnits}{"SIN" (default; sin(slope), as Align writes it) or
+"TAN". LShunter converts to tan(slope), the units of min1 and min2.}
+
+\item{min1, min2}{Minimum gradient for a patch, 1st and 2nd rounds, as
+tan(slope).}
 
 \item{Accum}{Input flow accumulation raster (.flt) created by bldgrds.}
 
@@ -50,10 +60,6 @@ a road layer is supplied; ignored (and may be left NULL) otherwise.}
 
 \item{MinSize}{Minimum patch size in square meters.}
 
-\item{GradLength}{Length in meters over which to calculate gradient.
-Required when no Gradient raster is supplied; ignored (and may be left
-NULL) otherwise.}
-
 \item{OutPatch}{Output patch raster (.flt).}
 
 \item{ScratchDir}{Scratch directory.}
@@ -65,8 +71,8 @@ NULL) otherwise.}
 }
 \description{
 LShunter identifies potential landslide sites from patches of outlying
-elevation change on a DoD, delineated on the outlier raster created by
-Align. It works in two rounds, applying a strict set of thresholds to find
-patch cores and then a looser set to grow them, so most of its parameters
-come in pairs.
+elevation change on a DoD, delineated on a raster created by Align: its
+exceedance probability raster (recommended) or its outlier raster. It works
+in two rounds, applying a strict set of thresholds to find patch cores and
+then a looser set to grow them, so most of its parameters come in pairs.
 }

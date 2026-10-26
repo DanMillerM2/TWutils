@@ -1162,9 +1162,10 @@ huntLS <- function(DEM = NOFILE,
 #' --- LShunter, Identify potential landslide sites from outlier patches ---
 #'
 #' A wrapper for Fortran program LShunter, which finds candidate landslide
-#' sites on a DoD using the outlier raster created by align. It works in two
-#' rounds, so most thresholds come in pairs. LShunter operates in one of two
-#' modes, depending on whether `input_file` is supplied:
+#' sites on a DoD using a raster created by align: its exceedance probability
+#' raster (recommended) or its outlier raster, plus align's gradient raster.
+#' It works in two rounds, so most thresholds come in pairs. LShunter operates
+#' in one of two modes, depending on whether `input_file` is supplied:
 #' \enumerate{
 #'   \item As a wrapper for the LShunter executable, with an existing
 #'     LShunter input file.
@@ -1174,19 +1175,27 @@ huntLS <- function(DEM = NOFILE,
 #' @param input_file Character: an existing LShunter input file (optional).
 #'   Selects mode 1; it may also pin its own executable directory with an
 #'   `EXECUTABLE DIR:` line -- see [resolve_executable_dir()].
-#' @param Outlier Character: outlier raster (.flt) created by align.
+#' @param Outlier Character: outlier raster (.flt) created by align. Give
+#'   exactly one of Outlier and Exceedance.
+#' @param Exceedance Character: exceedance probability raster (.flt) created
+#'   by align (signed significance S = -log10(p)); recommended.
+#' @param Gradient Character: gradient raster (.flt) that align uses (align's
+#'   OUTPUT GRADIENT RASTER: YES writes <reference DEM>_grad<RADIUS>m).
+#'   Required in mode 2.
 #' @param Accum Character: input flow accumulation raster (.flt).
 #' @param OutPatch Character: output patch raster (.flt).
 #' @param ScratchDir Character: scratch directory.
-#' @param ... Further arguments passed to [LShunterInput()]: `DEM`,
-#'   `threshold1`/`threshold2`, `Gradient`, `min1`/`min2`, `maxAccum1`/
-#'   `maxAccum2`, `Roads`/`road_buffer`, `MinSize`, `GradLength`, `OutGrad`.
+#' @param ... Further arguments passed to [LShunterInput()]:
+#'   `threshold1`/`threshold2`, `GradientUnits`, `min1`/`min2`,
+#'   `maxAccum1`/`maxAccum2`, `Roads`/`road_buffer`, `MinSize`.
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'
 #' @return 0 on success. Stops with a message on any failure.
 #' @export
 LShunter <- function(input_file = NOFILE,
                      Outlier = NOFILE,
+                     Exceedance = NOFILE,
+                     Gradient = NOFILE,
                      Accum = NOFILE,
                      OutPatch = NOFILE,
                      ScratchDir = NOFILE,
@@ -1196,27 +1205,35 @@ LShunter <- function(input_file = NOFILE,
   if (!is_missing_path(input_file)) {
 
     # --- Mode 1: an existing input file tells us everything -----------------
+    # The elevation-change raster may be given as OUTLIER or EXCEEDANCE RASTER.
     input_lines <- get_input_file(input_file)
     require_keywords(input_lines,
-                     c("OUTLIER", "GRADIENT", "FLOW ACCUMULATION",
+                     c("OUTLIER|EXCEEDANCE", "GRADIENT", "FLOW ACCUMULATION",
                        "MINIMUM SIZE", "OUTPUT PATCH RASTER", "SCRATCH DIRECTORY"))
     Executable_dir <- resolve_executable_dir(input_lines, Executable_dir, "LShunter")
 
   } else {
 
     # --- Mode 2: build an input file, then run LShunter -----------------------
-    # Only the four arguments this wrapper names itself are checked here; the
-    # rest are validated by LShunterInput(), which knows which are paths and
-    # which are thresholds. Anything misspelled in ... surfaces there as an
-    # "unused argument" error rather than being silently dropped.
+    # Only the arguments this wrapper names itself are checked here; the rest
+    # are validated by LShunterInput(), which knows which are paths and which
+    # are thresholds. Anything misspelled in ... surfaces there as an "unused
+    # argument" error rather than being silently dropped.
     check <- argument_checker()
-    check$input_file(Outlier, "Outlier")
+    if (is_missing_path(Outlier) == is_missing_path(Exceedance)) {
+      stop("LShunter(): give exactly one of Outlier and Exceedance.", call. = FALSE)
+    }
+    if (!is_missing_path(Outlier))    check$input_file(Outlier,    "Outlier")
+    if (!is_missing_path(Exceedance)) check$input_file(Exceedance, "Exceedance")
+    check$input_file(Gradient, "Gradient")
     check$input_file(Accum,   "Accum")
     check$directory(ScratchDir, "ScratchDir")
     check$supplied(OutPatch, "OutPatch")
     check$report()
 
     LShunterInput(Outlier = Outlier,
+                  Exceedance = Exceedance,
+                  Gradient = Gradient,
                   Accum = Accum,
                   OutPatch = OutPatch,
                   ScratchDir = ScratchDir,

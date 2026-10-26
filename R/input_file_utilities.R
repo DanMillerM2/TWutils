@@ -1803,18 +1803,28 @@ huntLSinput <- function(DEM,
 #' Create an input file for Fortran program LShunter
 #'
 #' LShunter identifies potential landslide sites from patches of outlying
-#' elevation change on a DoD, delineated on the outlier raster created by
-#' Align. It works in two rounds, applying a strict set of thresholds to find
-#' patch cores and then a looser set to grow them, so most of its parameters
-#' come in pairs.
+#' elevation change on a DoD, delineated on a raster created by Align: its
+#' exceedance probability raster (recommended) or its outlier raster. It works
+#' in two rounds, applying a strict set of thresholds to find patch cores and
+#' then a looser set to grow them, so most of its parameters come in pairs.
 #'
-#' @param DEM Elevation raster. Only needed when no Gradient raster is
-#'   supplied, in which case LShunter computes gradient itself.
-#' @param Outlier Outlier raster (.flt) created by Align.
-#' @param threshold1,threshold2 Maximum k value for a patch in the 1st and 2nd
-#'   rounds, e.g. -5.0 then -1.5.
-#' @param Gradient Input gradient raster (.flt) from MakeGrids (optional).
-#' @param min1,min2 Minimum gradient for a patch, 1st and 2nd rounds.
+#' @param Outlier Outlier raster (.flt) created by Align (OUTPUT OUTLIER RASTER
+#'   or OUTPUT DENSITY OUTLIER RASTER). Give exactly one of Outlier and
+#'   Exceedance.
+#' @param Exceedance Exceedance probability raster (.flt) created by Align
+#'   (OUTPUT EXCEEDANCE PROBABILITY RASTER): signed significance
+#'   S = -log10(p), negative for loss. Recommended: its thresholds mean the same
+#'   false-alarm rate on every kind of ground.
+#' @param threshold1,threshold2 Maximum value for a patch in the 1st and 2nd
+#'   rounds: outlier values (e.g. -5.0 then -2.5) or, with Exceedance, S
+#'   values (e.g. -4 then -2, that is p <= 0.01% then p <= 1%).
+#' @param Gradient Gradient raster (.flt): the one Align uses (Align's OUTPUT
+#'   GRADIENT RASTER: YES writes <reference DEM>_grad<RADIUS>m). Required:
+#'   LShunter no longer computes gradient itself.
+#' @param GradientUnits "SIN" (default; sin(slope), as Align writes it) or
+#'   "TAN". LShunter converts to tan(slope), the units of min1 and min2.
+#' @param min1,min2 Minimum gradient for a patch, 1st and 2nd rounds, as
+#'   tan(slope).
 #' @param Accum Input flow accumulation raster (.flt) created by bldgrds.
 #' @param maxAccum1,maxAccum2 Maximum flow accumulation for a patch, 1st and
 #'   2nd rounds.
@@ -1822,20 +1832,18 @@ huntLSinput <- function(DEM,
 #' @param road_buffer Buffer in meters around the road layer. Required when
 #'   a road layer is supplied; ignored (and may be left NULL) otherwise.
 #' @param MinSize Minimum patch size in square meters.
-#' @param GradLength Length in meters over which to calculate gradient.
-#'   Required when no Gradient raster is supplied; ignored (and may be left
-#'   NULL) otherwise.
 #' @param OutPatch Output patch raster (.flt).
 #' @param ScratchDir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
 #'
 #' @return 0 on success.
 #' @export
-LShunterInput <- function(DEM = NOFILE,
-                          Outlier,
+LShunterInput <- function(Outlier = NOFILE,
+                          Exceedance = NOFILE,
                           threshold1,
                           threshold2,
-                          Gradient = NOFILE,
+                          Gradient,
+                          GradientUnits = "SIN",
                           min1,
                           min2,
                           Accum,
@@ -1844,18 +1852,26 @@ LShunterInput <- function(DEM = NOFILE,
                           Roads = NOFILE,
                           road_buffer = NULL,
                           MinSize,
-                          GradLength = NULL,
-                          OutGrad = NOFILE,
                           OutPatch,
                           ScratchDir,
                           overwrite = TRUE) {
 
-  # Gradient is optional, but if it is absent LShunter has to compute it
-  # itself, which needs both a DEM and a length scale.
-  if (is_missing_path(Gradient) &&
-      (is_missing_path(DEM) || is.null(GradLength))) {
-    stop("LShunterInput(): Gradient was not supplied, so both DEM and ",
-         "GradLength are required (LShunter must compute gradient itself).",
+  # Exactly one elevation-change raster: Align's outlier or exceedance raster.
+  if (is_missing_path(Outlier) == is_missing_path(Exceedance)) {
+    stop("LShunterInput(): give exactly one of Outlier and Exceedance.",
+         call. = FALSE)
+  }
+
+  # The gradient raster is required: LShunter no longer computes gradient, so
+  # it uses the same raster (and length scale) as Align.
+  if (missing(Gradient) || is_missing_path(Gradient)) {
+    stop("LShunterInput(): Gradient is required -- the gradient raster Align ",
+         "uses (Align's OUTPUT GRADIENT RASTER: YES writes ",
+         "<reference DEM>_grad<RADIUS>m).", call. = FALSE)
+  }
+  GradientUnits <- toupper(GradientUnits)
+  if (!GradientUnits %in% c("SIN", "TAN")) {
+    stop("LShunterInput(): GradientUnits must be \"SIN\" or \"TAN\".",
          call. = FALSE)
   }
 
@@ -1869,26 +1885,25 @@ LShunterInput <- function(DEM = NOFILE,
   writer <- input_writer("LShunter", ScratchDir,
                          "input_LShunter.txt", overwrite)
 
-  # --- Elevation, only needed when gradient must be computed --------------
-  writer$optional("DEM", normalize_raster_path(DEM))
-
-  # --- The outlier raster from Align, with the outlier thresholds ------------
-  writer$keyword("OUTLIER",
-                 normalize_raster_path(Outlier, must_exist = TRUE),
-                 THRESHOLD1 = threshold1,
-                 THRESHOLD2 = threshold2)
-
-  # --- Gradient. Either a precomputed raster is supplied, or LShunter is
-  #     told the length scale over which to compute gradient itself. -------
-  if (is_missing_path(Gradient)) {
-    writer$keyword("GRADIENT", MIN1 = min1, MIN2 = min2)
-    writer$keyword("GRADIENT LENGTH SCALE", GradLength)
+  # --- The raster from Align, with its two thresholds --------------------
+  if (!is_missing_path(Exceedance)) {
+    writer$keyword("EXCEEDANCE RASTER",
+                   normalize_raster_path(Exceedance, must_exist = TRUE),
+                   THRESHOLD1 = threshold1,
+                   THRESHOLD2 = threshold2)
   } else {
-    writer$keyword("GRADIENT",
-                   FILE = normalize_raster_path(Gradient),
-                   MIN1 = min1,
-                   MIN2 = min2)
+    writer$keyword("OUTLIER",
+                   normalize_raster_path(Outlier, must_exist = TRUE),
+                   THRESHOLD1 = threshold1,
+                   THRESHOLD2 = threshold2)
   }
+
+  # --- Gradient: Align's gradient raster, with its units -----------------
+  writer$keyword("GRADIENT",
+                 FILE = normalize_raster_path(Gradient, must_exist = TRUE),
+                 MIN1 = min1,
+                 MIN2 = min2,
+                 UNITS = GradientUnits)
 
   # --- Flow accumulation, with its per-round ceilings ---------------------
   writer$keyword("FLOW ACCUMULATION",
