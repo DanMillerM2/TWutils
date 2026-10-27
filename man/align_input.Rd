@@ -26,7 +26,9 @@ align_input(
   outDif,
   outOutlier,
   scratch_dir,
-  overwrite = TRUE
+  overwrite = TRUE,
+  convergence = 0,
+  minPoints = 0
 )
 }
 \arguments{
@@ -73,6 +75,13 @@ aspect.}
 \item{scratch_dir}{Scratch directory.}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
+
+\item{convergence}{Stop iterating once an iteration changes the RMSE by
+less than this many meters (CONVERGENCE); 0 omits the keyword, so every
+iteration runs.}
+
+\item{minPoints}{Minimum regression points for a tile to be solved
+(TILES MIN POINTS); 0 omits it, leaving Align's default (100000).}
 }
 \value{
 The input file path, invisibly.

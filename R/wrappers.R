@@ -1028,6 +1028,9 @@ resample <- function(in_raster = NOFILE,
 #' @param scratch_dir Character: scratch directory.
 #' @param executable_dir Character: directory holding the executable.
 #' @param program_name Character: base name of the executable.
+#' @param convergence Numeric: optional. Stop iterating once an iteration
+#'   changes the RMSE by less than this many meters; `iterations` is then the
+#'   maximum. 0 (the default) always runs all `iterations`.
 #'
 #' @return 0 on success. Stops with a message on any failure.
 #' @export
@@ -1053,13 +1056,15 @@ align <- function(refDTM = NOFILE,
                   outOutlier = NOFILE,
                   scratch_dir = NOFILE,
                   executable_dir = NOFILE,
-                  program_name = "align") {
+                  program_name = "align",
+                  convergence = 0) {
 
   check <- argument_checker()
   check$input_file(refDTM,   "refDTM")
   check$input_file(alignDTM, "alignDTM")
   check$number(k, "k (Tukey's fence parameter)", minimum = 0,
                allow_minimum = TRUE)
+  check$number(convergence, "convergence", minimum = 0, allow_minimum = TRUE)
   check$supplied(outDTM,     "outDTM")
   check$supplied(outbins,    "outbins")
   check$supplied(outDif,     "outDif")
@@ -1072,7 +1077,8 @@ align <- function(refDTM = NOFILE,
                             iterations, k, dampener, outDTM,
                             tileNx, tileNy, overlap, radius,
                             nslope, maxSlope, nAzimuth,
-                            outbins, outDif, outOutlier, scratch_dir)
+                            outbins, outDif, outOutlier, scratch_dir,
+                            convergence = convergence)
 
   run_program(program_name, input_file, executable_dir)
   0L
