@@ -21,7 +21,23 @@ LShunterInput(
   MinSize,
   OutPatch,
   ScratchDir,
-  overwrite = TRUE
+  overwrite = TRUE,
+  CenDif = NOFILE,
+  IQR = NOFILE,
+  NoiseCorr = NOFILE,
+  NoiseCover = NULL,
+  Landform = NOFILE,
+  DistChannel = NOFILE,
+  OutTable = NOFILE,
+  MinPatchSignificance = NULL,
+  NullRealizations = NULL,
+  NullTile = NULL,
+  NullSeed = NULL,
+  SeedDenRef = NOFILE,
+  SeedDenAlign = NOFILE,
+  SeedDenMin = NULL,
+  SeedDenWindow = NULL,
+  SignFlip = FALSE
 )
 }
 \arguments{
@@ -65,6 +81,45 @@ a road layer is supplied; ignored (and may be left NULL) otherwise.}
 \item{ScratchDir}{Scratch directory.}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
+
+\item{CenDif}{Align's centred difference raster (OUTPUT CENTERED
+DIFFERENCE RASTER; optional): patch depths and volumes. Needed by
+\code{OutTable} and \code{MinPatchSignificance}.}
+
+\item{IQR}{Align's IQR raster, \verb{<OUTPUT LOD RASTER>_iqr} (optional; goes
+with \code{NoiseCorr}): each patch's volume uncertainty.}
+
+\item{NoiseCorr}{Align's noise correlogram, \verb{<BINS OUTPUT>_densityLodCorr.csv}
+(optional; goes with \code{IQR}; needed by \code{MinPatchSignificance} and
+\code{NullRealizations}).}
+
+\item{NoiseCover}{Which correlogram to use: "ALL" (LShunter's default),
+"OPEN" or "VEGETATED".}
+
+\item{Landform}{RIL landform raster (RIL RASTER; optional), reported per
+patch in the table.}
+
+\item{DistChannel}{Distance-to-channel raster in meters (optional),
+reported per patch in the table.}
+
+\item{OutTable}{Output patch table (.csv; optional): area, centroid, depth
+and volume, and with \code{IQR}/\code{NoiseCorr} the volume SD and significance.}
+
+\item{MinPatchSignificance}{Drop patches whose -volume/SD(volume) is below
+this z value (optional; needs \code{CenDif}, \code{IQR} and \code{NoiseCorr}).}
+
+\item{NullRealizations, NullTile, NullSeed}{NULL SIMULATION: realizations of
+simulated correlated noise run through the same rules, to give the
+patches noise alone produces (optional; needs \code{NoiseCorr}). \code{NullTile} is
+the FFT tile in points (a power of 2, at least 512).}
+
+\item{SeedDenRef, SeedDenAlign, SeedDenMin, SeedDenWindow}{SEED DENSITY: seed
+patches only where both surveys' local ground-return density is at least
+\code{SeedDenMin} returns/m2 (the two count rasters Align uses; optional;
+\code{SeedDenWindow} is the window half-width in points).}
+
+\item{SignFlip}{If TRUE, also run the same rules on the negated input
+(SIGN FLIP CONTROL): the gain patches, a control for false alarms.}
 }
 \value{
 0 on success.

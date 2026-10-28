@@ -1028,11 +1028,23 @@ resample <- function(in_raster = NOFILE,
 #' @param scratch_dir Character: scratch directory.
 #' @param executable_dir Character: directory holding the executable.
 #' @param program_name Character: base name of the executable.
-#' @param convergence Numeric: optional. Stop iterating once an iteration
-#'   changes the RMSE by less than this many meters; `iterations` is then the
-#'   maximum. 0 (the default) always runs all `iterations`.
+#' @param convergence Numeric: optional. Stop iterating once the aligned DEM
+#'   changes by less than this many meters between iterations (the 99th
+#'   percentile on steep ground, and the predicted remaining change; 0.005
+#'   recommended); `iterations` is then the maximum. 0 (the default) always
+#'   runs all `iterations`.
+#' @param ... Further options passed to [align_input()]: `minPoints`,
+#'   `derivatives`, `applySlope`, `weights`, `groundMaskRadius`,
+#'   `waterGradThreshold`/`waterCurvThreshold`, `shift`, the tile options
+#'   (`tileFit`, `tileSelect`, `cvBlock`, `cvBuffer`, `minTileSize`,
+#'   `maxTileSize`, `priorPoints`, `priorFraction`, `prior`), `outGradient`,
+#'   `densityLod` and its outputs (`outDenOutlier`, `outLod`, `outCenDif`,
+#'   `outExceed`), `localOffsetWindow`/`localOffsetMinPoints`, `outCorDif`
+#'   and `outDX`/`outDY`/`outDZ`. With `tileSelect = "AUTO"`, `tileNx` and
+#'   `tileNy` may stay 0.
 #'
 #' @return 0 on success. Stops with a message on any failure.
+#' @seealso [align_input()], [align_gradient_raster()]
 #' @export
 align <- function(refDTM = NOFILE,
                   alignDTM = NOFILE,
@@ -1057,7 +1069,8 @@ align <- function(refDTM = NOFILE,
                   scratch_dir = NOFILE,
                   executable_dir = NOFILE,
                   program_name = "align",
-                  convergence = 0) {
+                  convergence = 0,
+                  ...) {
 
   check <- argument_checker()
   check$input_file(refDTM,   "refDTM")
@@ -1078,7 +1091,7 @@ align <- function(refDTM = NOFILE,
                             tileNx, tileNy, overlap, radius,
                             nslope, maxSlope, nAzimuth,
                             outbins, outDif, outOutlier, scratch_dir,
-                            convergence = convergence)
+                            convergence = convergence, ...)
 
   run_program(program_name, input_file, executable_dir)
   0L
@@ -1193,7 +1206,12 @@ huntLS <- function(DEM = NOFILE,
 #' @param ScratchDir Character: scratch directory.
 #' @param ... Further arguments passed to [LShunterInput()]:
 #'   `threshold1`/`threshold2`, `GradientUnits`, `min1`/`min2`,
-#'   `maxAccum1`/`maxAccum2`, `Roads`/`road_buffer`, `MinSize`.
+#'   `maxAccum1`/`maxAccum2`, `Roads`/`road_buffer`, `MinSize`; and the
+#'   optional patch table and controls: `CenDif`, `IQR`, `NoiseCorr`,
+#'   `NoiseCover`, `Landform`, `DistChannel`, `OutTable`,
+#'   `MinPatchSignificance`, `NullRealizations`/`NullTile`/`NullSeed`,
+#'   `SeedDenRef`/`SeedDenAlign`/`SeedDenMin`/`SeedDenWindow` and `SignFlip`.
+#'   Align writes most of these inputs: see [align_input()].
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'
 #' @return 0 on success. Stops with a message on any failure.

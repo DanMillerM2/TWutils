@@ -814,7 +814,15 @@ input_writer <- function(program,
     formatted_arguments <- vapply(seq_along(arguments), function(index) {
       # A single argument may itself be a vector, e.g. a run of regression
       # coefficients; those are flattened into the same comma-separated list.
-      value_text <- paste0(as.character(arguments[[index]]), collapse = ", ")
+      # Numbers are written without scientific notation: as.character(100000)
+      # gives "1e+05", which a Fortran integer read rejects (Align's TILES
+      # MIN POINTS, for one).
+      value <- arguments[[index]]
+      value_text <- if (is.numeric(value)) {
+        paste0(vapply(value, format_number, character(1)), collapse = ", ")
+      } else {
+        paste0(as.character(value), collapse = ", ")
+      }
       if (nzchar(argument_names[index])) {
         paste0(argument_names[index], " = ", value_text)
       } else {
@@ -1629,19 +1637,35 @@ accum_input <- function(dem,
 #' for the optimal x-y-z shift of one DTM, then writes the shifted DTM along
 #' with elevation-difference and outlier rasters.
 #'
+#' Align is built from `alignSlope2.f90` and its modules in
+#' `GridUtilities/align_modules` (project `Projects/align`). Every argument
+#' after `minPoints` is optional and, left at its default, writes nothing, so
+#' Align uses its own default; they need Align at GridUtilities 8a08fa6 or
+#' later. The recommended setup for landslide mapping (see Align's CLAUDE.md)
+#' is `derivatives = "CENTRAL"`, `tileFit = "JOINT"` with
+#' `tileSelect = "AUTO"`, `convergence = 0.005` with `iterations = 8`, and,
+#' with both ground-return rasters, `densityLod = TRUE` with `outExceed` and
+#' `outGradient = TRUE`, which give LShunter its two inputs.
+#'
 #' @param refDTM Reference DTM (full path).
 #' @param alignDTM DTM to be aligned to the reference (full path).
-#' @param refGrnd ground-return density raster for the reference dataset.
-#' @param alignGrnd ground-return density raster for the align dataset.
+#' @param refGrnd Ground-return count raster for the reference survey: ground
+#'   points per reference DTM cell (as ground_returns.R writes
+#'   `ground_count_ref_grid`), not a density.
+#' @param alignGrnd Ground-return count raster for the align survey, on the
+#'   reference DTM's grid.
 #' @param refDSM Reference surface-height raster (optional).
 #' @param alignDSM DSM to align (optional).
-#' @param iterations Number of iterations used to solve for the shift.
+#' @param iterations Number of iterations used to solve for the shift (the
+#'   maximum, with `convergence`).
 #' @param k Number of interquartile ranges for the Tukey's fence that
 #'   identifies outlying elevation differences.
 #' @param dampener Dampener applied to the shift at each iteration.
 #' @param outDTM Output aligned DTM.
-#' @param tileNx,tileNy Number of tiles in the x and y directions.
-#' @param overlap Overlap between tiles, in meters.
+#' @param tileNx,tileNy Number of tiles in the x and y directions. With
+#'   `tileSelect = "AUTO"` they may be 0 (omitted): Align chooses them.
+#' @param overlap Fractional overlap between tiles (0.5 = half a tile). NULL
+#'   omits it (allowed with `tileSelect = "AUTO"`).
 #' @param radius Radius in meters for measuring slope and aspect.
 #' @param nslope Number of gradient bins.
 #' @param maxSlope Maximum gradient for binning.
@@ -1652,13 +1676,59 @@ accum_input <- function(dem,
 #' @param outOutlier Output outlier raster (.flt).
 #' @param scratch_dir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
-#' @param convergence Stop iterating once an iteration changes the RMSE by
-#'   less than this many meters (CONVERGENCE); 0 omits the keyword, so every
-#'   iteration runs.
+#' @param convergence Stop iterating once the aligned DEM changes by less than
+#'   this many meters between iterations: the 99th percentile on steep ground,
+#'   and the predicted remaining change (CONVERGENCE; 0.005 recommended). 0
+#'   omits the keyword, so every iteration runs.
 #' @param minPoints Minimum regression points for a tile to be solved
 #'   (TILES MIN POINTS); 0 omits it, leaving Align's default (100000).
+#' @param derivatives "SIDED" (Align's default) or "CENTRAL" (recommended).
+#' @param applySlope APPLY SLOPE TERMS: "YES" (default), "NO" or "STABLE".
+#' @param weights WEIGHTS: "NONE" (default) or "IQR".
+#' @param groundMaskRadius GROUND MASK RADIUS (m): focal maximum applied to
+#'   the ground-return mask; 0 omits it.
+#' @param waterGradThreshold,waterCurvThreshold MASK OPEN WATER thresholds;
+#'   give both to mask inferred open water, or neither.
+#' @param shift SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
+#'   (optional).
+#' @param tileFit TILES FIT: "SEPARATE" (default) or "JOINT" (one bilinear
+#'   field; needed for `tileSelect`).
+#' @param tileSelect TILES SELECT: "NONE" (default), "REPORT", "CV", "AUTO" or
+#'   "AUTO REPORT". "AUTO" chooses the tile size and prior strength by
+#'   cross-validation over square tiles from `maxTileSize` down to
+#'   `minTileSize`, and implies `tileFit = "JOINT"`.
+#' @param cvBlock,cvBuffer CV BLOCK and CV BUFFER (m): fold block size
+#'   (Align's default 1000) and the buffer around held-out blocks (100).
+#' @param minTileSize,maxTileSize MIN SIZE and MAX SIZE (m) for
+#'   `tileSelect = "AUTO"` (Align's defaults 500 and 8000). `minTileSize` is a
+#'   judgement: a field finer than the scale of real change can absorb it.
+#' @param priorPoints,priorFraction TILES PRIOR POINTS and PRIOR FRACTION:
+#'   strength of the tile prior (NULL omits each).
+#' @param prior TILES PRIOR: "NEIGHBOURS" or "GLOBAL".
+#' @param outGradient If TRUE, Align writes the gradient it uses,
+#'   sin(slope) over `radius`, next to the reference DTM as
+#'   `<refDTM>_grad<radius>m` (OUTPUT GRADIENT RASTER: YES). LShunter requires
+#'   this raster; [align_gradient_raster()] gives its path.
+#' @param densityLod If TRUE, fit the level of detection from both surveys'
+#'   ground-return density (DENSITY LOD: YES; needs `refGrnd` and
+#'   `alignGrnd`). The five outputs below need it.
+#' @param outDenOutlier OUTPUT DENSITY OUTLIER RASTER (optional).
+#' @param outLod OUTPUT LOD RASTER (optional): the loss limit; Align also
+#'   writes `<outLod>_gain`, `_centre` and `_iqr` (the IQR raster LShunter's
+#'   patch table uses).
+#' @param outCenDif OUTPUT CENTERED DIFFERENCE RASTER (optional): dz minus the
+#'   expected dz, for patch depths and volumes.
+#' @param outExceed OUTPUT EXCEEDANCE PROBABILITY RASTER (optional): signed
+#'   significance S = -log10(p), LShunter's recommended input.
+#' @param outCorDif OUTPUT CORRECTED DIFFERENCE RASTER (optional): dz minus
+#'   the modelled canopy bias (needs both DSMs to differ from the difference).
+#' @param localOffsetWindow,localOffsetMinPoints LOCAL OFFSET WINDOW (m) and
+#'   MIN POINTS (needs `densityLod`; not recommended as a default).
+#' @param outDX,outDY,outDZ OUTPUT DX/DY/DZ RASTER: the accumulated shifts
+#'   applied to the aligned DTM (each optional).
 #'
 #' @return The input file path, invisibly.
+#' @seealso [align_gradient_raster()]
 #' @export
 align_input <- function(refDTM,
                         alignDTM,
@@ -1683,7 +1753,81 @@ align_input <- function(refDTM,
                         scratch_dir,
                         overwrite = TRUE,
                         convergence = 0,
-                        minPoints = 0) {
+                        minPoints = 0,
+                        derivatives = NULL,
+                        applySlope = NULL,
+                        weights = NULL,
+                        groundMaskRadius = 0,
+                        waterGradThreshold = NULL,
+                        waterCurvThreshold = NULL,
+                        shift = NULL,
+                        tileFit = NULL,
+                        tileSelect = NULL,
+                        cvBlock = NULL,
+                        cvBuffer = NULL,
+                        minTileSize = NULL,
+                        maxTileSize = NULL,
+                        priorPoints = NULL,
+                        priorFraction = NULL,
+                        prior = NULL,
+                        outGradient = FALSE,
+                        densityLod = FALSE,
+                        outDenOutlier = NOFILE,
+                        outLod = NOFILE,
+                        outCenDif = NOFILE,
+                        outExceed = NOFILE,
+                        outCorDif = NOFILE,
+                        localOffsetWindow = NULL,
+                        localOffsetMinPoints = NULL,
+                        outDX = NOFILE,
+                        outDY = NOFILE,
+                        outDZ = NOFILE) {
+
+  # --- Choices, checked here so a misspelling fails before Align runs ------
+  derivatives <- check_choice(derivatives, c("SIDED", "CENTRAL"), "derivatives")
+  applySlope  <- check_choice(applySlope, c("YES", "NO", "STABLE"), "applySlope")
+  weights     <- check_choice(weights, c("NONE", "IQR"), "weights")
+  tileFit     <- check_choice(tileFit, c("SEPARATE", "JOINT"), "tileFit")
+  tileSelect  <- check_choice(tileSelect, c("NONE", "REPORT", "CV", "AUTO", "AUTO REPORT"),
+                              "tileSelect")
+  prior       <- check_choice(prior, c("NEIGHBOURS", "NEIGHBORS", "GLOBAL"), "prior")
+
+  # --- Combinations Align would reject ------------------------------------
+  auto_tiles <- !is.null(tileSelect) && startsWith(tileSelect, "AUTO")
+  if (!is.null(tileSelect) && tileSelect %in% c("REPORT", "CV") &&
+      !identical(tileFit, "JOINT")) {
+    stop("align_input(): tileSelect = \"", tileSelect, "\" needs tileFit = \"JOINT\".",
+         call. = FALSE)
+  }
+  if (auto_tiles && identical(tileFit, "SEPARATE")) {
+    stop("align_input(): tileSelect = \"AUTO\" fits the tiles jointly; ",
+         "tileFit = \"SEPARATE\" can't be used with it.", call. = FALSE)
+  }
+  if (!auto_tiles && (tileNx <= 0 || tileNy <= 0) && !is.null(tileSelect) &&
+      tileSelect != "NONE") {
+    stop("align_input(): tileSelect needs tileNx and tileNy > 0 (or \"AUTO\").",
+         call. = FALSE)
+  }
+  lod_outputs <- c(outDenOutlier = outDenOutlier, outLod = outLod,
+                   outCenDif = outCenDif, outExceed = outExceed)
+  lod_given <- names(lod_outputs)[!vapply(lod_outputs, is_missing_path, logical(1))]
+  needs_lod <- c(lod_given, if (!is.null(localOffsetWindow)) "localOffsetWindow")
+  if (!isTRUE(densityLod) && length(needs_lod) > 0) {
+    stop("align_input(): ", paste(needs_lod, collapse = ", "),
+         if (length(needs_lod) > 1) " need" else " needs",
+         " densityLod = TRUE.", call. = FALSE)
+  }
+  if (isTRUE(densityLod) && (is_missing_path(refGrnd) || is_missing_path(alignGrnd))) {
+    stop("align_input(): densityLod needs both ground-return rasters (refGrnd and ",
+         "alignGrnd).", call. = FALSE)
+  }
+  if (is.null(waterGradThreshold) != is.null(waterCurvThreshold)) {
+    stop("align_input(): give both waterGradThreshold and waterCurvThreshold, or neither.",
+         call. = FALSE)
+  }
+  if (!is.null(shift) && length(shift) != 3L) {
+    stop("align_input(): shift must be c(dx, dy, dz).", call. = FALSE)
+  }
 
   writer <- input_writer("align", scratch_dir, "input_align.txt", overwrite)
 
@@ -1693,10 +1837,20 @@ align_input <- function(refDTM,
                  normalize_raster_path(refDTM, must_exist = TRUE))
   writer$keyword("DEM TO ALIGN",
                  normalize_raster_path(alignDTM, must_exist = TRUE))
-  writer$optional("REFERENCE DENSITY RASTER", normalize_raster_path(refGrnd))
-  writer$optional("ALIGN DENSITY RASTER", normalize_raster_path(alignGrnd))
-  writer$optional("REFERENCE DSM", normalize_raster_path(refDSM))
-  writer$optional("DSM TO ALIGN",  normalize_raster_path(alignDSM))
+  writer$optional("REFERENCE DENSITY RASTER",
+                  normalize_raster_path(refGrnd, must_exist = !is_missing_path(refGrnd)))
+  writer$optional("ALIGN DENSITY RASTER",
+                  normalize_raster_path(alignGrnd, must_exist = !is_missing_path(alignGrnd)))
+  writer$optional("REFERENCE DSM",
+                  normalize_raster_path(refDSM, must_exist = !is_missing_path(refDSM)))
+  writer$optional("DSM TO ALIGN",
+                  normalize_raster_path(alignDSM, must_exist = !is_missing_path(alignDSM)))
+  if (groundMaskRadius > 0) writer$keyword("GROUND MASK RADIUS", groundMaskRadius)
+  if (!is.null(waterGradThreshold)) {
+    writer$keyword("MASK OPEN WATER", `GRAD THRESHOLD` = waterGradThreshold,
+                   `CURVATURE THRESHOLD` = waterCurvThreshold)
+  }
+  if (!is.null(shift)) writer$keyword("SHIFT IT", DX = shift[1], DY = shift[2], DZ = shift[3])
 
   # --- Solution parameters ------------------------------------------------
   writer$keyword("RADIUS", radius)
@@ -1704,10 +1858,26 @@ align_input <- function(refDTM,
   if (convergence > 0) writer$keyword("CONVERGENCE", convergence)
   writer$keyword("K", k)
   writer$keyword("DAMPENER", dampener)
+  if (!is.null(derivatives)) writer$keyword("DERIVATIVES", derivatives)
+  if (!is.null(applySlope))  writer$keyword("APPLY SLOPE TERMS", applySlope)
+  if (!is.null(weights))     writer$keyword("WEIGHTS", weights)
 
-  # --- Tiling: the DTM is solved in overlapping tiles ---------------------
-  writer$keyword("TILES", X = tileNx, Y = tileNy, OVERLAP = overlap,
-                 `MIN POINTS` = if (minPoints > 0) minPoints)
+  # --- Tiling: the DTM is solved in overlapping tiles, or as one field ------
+  # With SELECT = AUTO Align chooses X and Y itself, so they may be left out.
+  writer$keyword("TILES",
+                 X = if (!auto_tiles || tileNx > 0) tileNx,
+                 Y = if (!auto_tiles || tileNy > 0) tileNy,
+                 OVERLAP = overlap,
+                 `MIN POINTS` = if (minPoints > 0) minPoints,
+                 FIT = tileFit,
+                 SELECT = tileSelect,
+                 `CV BLOCK` = cvBlock,
+                 `CV BUFFER` = cvBuffer,
+                 `MIN SIZE` = minTileSize,
+                 `MAX SIZE` = maxTileSize,
+                 `PRIOR POINTS` = priorPoints,
+                 `PRIOR FRACTION` = priorFraction,
+                 PRIOR = prior)
 
   # --- Binning of elevation differences by slope and aspect ---------------
   writer$keyword("BINS",
@@ -1716,13 +1886,87 @@ align_input <- function(refDTM,
                  `AZIMUTH BINS` = nAzimuth,
                  OUTPUT         = normalize_file_path(outbins))
 
+  # --- Level of detection from ground-return density ----------------------
+  if (isTRUE(densityLod)) {
+    writer$keyword("DENSITY LOD", "YES")
+    if (!is.null(localOffsetWindow)) {
+      writer$keyword("LOCAL OFFSET", WINDOW = localOffsetWindow,
+                     `MIN POINTS` = localOffsetMinPoints)
+    }
+  }
+
   # --- Outputs ------------------------------------------------------------
   writer$keyword("OUTPUT DEM", normalize_file_path(outDTM))
   writer$keyword("OUTPUT DIFFERENCE RASTER", normalize_file_path(outDif))
   writer$keyword("OUTPUT OUTLIER RASTER", normalize_file_path(outOutlier))
+  if (isTRUE(outGradient)) writer$keyword("OUTPUT GRADIENT RASTER", "YES")
+  writer$optional("OUTPUT CORRECTED DIFFERENCE RASTER", normalize_file_path(outCorDif))
+  writer$optional("OUTPUT DENSITY OUTLIER RASTER", normalize_file_path(outDenOutlier))
+  writer$optional("OUTPUT LOD RASTER", normalize_file_path(outLod))
+  writer$optional("OUTPUT CENTERED DIFFERENCE RASTER", normalize_file_path(outCenDif))
+  writer$optional("OUTPUT EXCEEDANCE PROBABILITY RASTER", normalize_file_path(outExceed))
+  writer$optional("OUTPUT DX RASTER", normalize_file_path(outDX))
+  writer$optional("OUTPUT DY RASTER", normalize_file_path(outDY))
+  writer$optional("OUTPUT DZ RASTER", normalize_file_path(outDZ))
   writer$keyword("SCRATCH DIRECTORY", normalize_file_path(scratch_dir))
 
   invisible(writer$file_path)
+}
+
+
+#' Path of the gradient raster Align writes
+#'
+#' With OUTPUT GRADIENT RASTER: YES ([align_input()]'s `outGradient = TRUE`),
+#' Align writes the gradient it uses, sin(slope) over `radius`, next to the
+#' reference DTM as `<refDTM>_grad<radius>m`. This is the raster LShunter
+#' requires as its GRADIENT. The radius is written as a whole number when it
+#' is one (15 gives `_grad15m`), otherwise with two decimals (12.5 gives
+#' `_grad12.50m`), as Align formats it.
+#'
+#' @param refDTM Reference DTM given to Align (with or without extension).
+#' @param radius Align's RADIUS, in meters.
+#'
+#' @return The gradient raster's path, without extension.
+#' @export
+align_gradient_raster <- function(refDTM, radius) {
+  radius_text <- if (abs(radius - round(radius)) < 1e-4) {
+    format(round(radius), scientific = FALSE)
+  } else {
+    sprintf("%.2f", radius)
+  }
+  paste0(normalize_raster_path(refDTM), "_grad", radius_text, "m")
+}
+
+
+#' Format one number for an input file, never in scientific notation
+#'
+#' Up to 15 significant digits, as as.character() gives, but fixed-point:
+#' 100000 is "100000" rather than "1e+05", 0.0001 is "0.0001". NA stays "NA".
+#'
+#' @param x A single number.
+#' @return Its text.
+#' @noRd
+format_number <- function(x) {
+  if (is.na(x)) return("NA")
+  format(x, scientific = FALSE, digits = 15, trim = TRUE)
+}
+
+
+#' Check a keyword choice and put it in the form a program expects
+#'
+#' @param value The caller's value, or NULL to omit the keyword.
+#' @param choices Accepted values, upper case.
+#' @param name Argument name for the error message.
+#' @return NULL, or the value in upper case with single spaces.
+#' @noRd
+check_choice <- function(value, choices, name) {
+  if (is.null(value)) return(NULL)
+  cleaned <- toupper(gsub("\\s+", " ", trimws(as.character(value))))
+  if (length(cleaned) != 1L || !cleaned %in% choices) {
+    stop(name, " must be one of ", paste0("\"", choices, "\"", collapse = ", "),
+         " (got \"", paste(value, collapse = " "), "\").", call. = FALSE)
+  }
+  cleaned
 }
 
 
@@ -1844,6 +2088,34 @@ huntLSinput <- function(DEM,
 #' @param OutPatch Output patch raster (.flt).
 #' @param ScratchDir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
+#' @param CenDif Align's centred difference raster (OUTPUT CENTERED
+#'   DIFFERENCE RASTER; optional): patch depths and volumes. Needed by
+#'   `OutTable` and `MinPatchSignificance`.
+#' @param IQR Align's IQR raster, `<OUTPUT LOD RASTER>_iqr` (optional; goes
+#'   with `NoiseCorr`): each patch's volume uncertainty.
+#' @param NoiseCorr Align's noise correlogram, `<BINS OUTPUT>_densityLodCorr.csv`
+#'   (optional; goes with `IQR`; needed by `MinPatchSignificance` and
+#'   `NullRealizations`).
+#' @param NoiseCover Which correlogram to use: "ALL" (LShunter's default),
+#'   "OPEN" or "VEGETATED".
+#' @param Landform RIL landform raster (RIL RASTER; optional), reported per
+#'   patch in the table.
+#' @param DistChannel Distance-to-channel raster in meters (optional),
+#'   reported per patch in the table.
+#' @param OutTable Output patch table (.csv; optional): area, centroid, depth
+#'   and volume, and with `IQR`/`NoiseCorr` the volume SD and significance.
+#' @param MinPatchSignificance Drop patches whose -volume/SD(volume) is below
+#'   this z value (optional; needs `CenDif`, `IQR` and `NoiseCorr`).
+#' @param NullRealizations,NullTile,NullSeed NULL SIMULATION: realizations of
+#'   simulated correlated noise run through the same rules, to give the
+#'   patches noise alone produces (optional; needs `NoiseCorr`). `NullTile` is
+#'   the FFT tile in points (a power of 2, at least 512).
+#' @param SeedDenRef,SeedDenAlign,SeedDenMin,SeedDenWindow SEED DENSITY: seed
+#'   patches only where both surveys' local ground-return density is at least
+#'   `SeedDenMin` returns/m2 (the two count rasters Align uses; optional;
+#'   `SeedDenWindow` is the window half-width in points).
+#' @param SignFlip If TRUE, also run the same rules on the negated input
+#'   (SIGN FLIP CONTROL): the gain patches, a control for false alarms.
 #'
 #' @return 0 on success.
 #' @export
@@ -1863,7 +2135,50 @@ LShunterInput <- function(Outlier = NOFILE,
                           MinSize,
                           OutPatch,
                           ScratchDir,
-                          overwrite = TRUE) {
+                          overwrite = TRUE,
+                          CenDif = NOFILE,
+                          IQR = NOFILE,
+                          NoiseCorr = NOFILE,
+                          NoiseCover = NULL,
+                          Landform = NOFILE,
+                          DistChannel = NOFILE,
+                          OutTable = NOFILE,
+                          MinPatchSignificance = NULL,
+                          NullRealizations = NULL,
+                          NullTile = NULL,
+                          NullSeed = NULL,
+                          SeedDenRef = NOFILE,
+                          SeedDenAlign = NOFILE,
+                          SeedDenMin = NULL,
+                          SeedDenWindow = NULL,
+                          SignFlip = FALSE) {
+
+  # The patch table and the noise model need these together (LShunter stops otherwise).
+  NoiseCover <- check_choice(NoiseCover, c("ALL", "OPEN", "VEGETATED"), "NoiseCover")
+  if (!is_missing_path(OutTable) && is_missing_path(CenDif)) {
+    stop("LShunterInput(): OutTable needs CenDif (Align's centred difference raster).",
+         call. = FALSE)
+  }
+  if (is_missing_path(IQR) != is_missing_path(NoiseCorr)) {
+    stop("LShunterInput(): IQR and NoiseCorr go together (patch volume uncertainty).",
+         call. = FALSE)
+  }
+  if (!is.null(MinPatchSignificance) &&
+      (is_missing_path(CenDif) || is_missing_path(IQR) || is_missing_path(NoiseCorr))) {
+    stop("LShunterInput(): MinPatchSignificance needs CenDif, IQR and NoiseCorr.",
+         call. = FALSE)
+  }
+  if (!is.null(NullRealizations) && is_missing_path(NoiseCorr)) {
+    stop("LShunterInput(): NullRealizations needs NoiseCorr (Align's correlogram).",
+         call. = FALSE)
+  }
+  seed_density <- !is_missing_path(SeedDenRef) || !is_missing_path(SeedDenAlign) ||
+    !is.null(SeedDenMin)
+  if (seed_density && (is_missing_path(SeedDenRef) || is_missing_path(SeedDenAlign) ||
+                       is.null(SeedDenMin))) {
+    stop("LShunterInput(): seed density needs SeedDenRef, SeedDenAlign and SeedDenMin.",
+         call. = FALSE)
+  }
 
   # Exactly one elevation-change raster: Align's outlier or exceedance raster.
   if (is_missing_path(Outlier) == is_missing_path(Exceedance)) {
@@ -1924,6 +2239,40 @@ LShunterInput <- function(Outlier = NOFILE,
   writer$optional("ROAD SHAPEFILE",
                   normalize_file_path(Roads, must_exist = TRUE, extensions = "shp"),
                   BUFFER = road_buffer)
+
+  # --- Seeds only where both surveys have enough ground returns ------------
+  if (seed_density) {
+    writer$keyword("SEED DENSITY",
+                   REFERENCE = normalize_raster_path(SeedDenRef, must_exist = TRUE),
+                   ALIGN = normalize_raster_path(SeedDenAlign, must_exist = TRUE),
+                   MINIMUM = SeedDenMin,
+                   WINDOW = SeedDenWindow)
+  }
+
+  # --- Patch table and patch significance, from Align's outputs ------------
+  writer$optional("CENTERED DIFFERENCE RASTER",
+                  normalize_raster_path(CenDif, must_exist = !is_missing_path(CenDif)))
+  writer$optional("IQR RASTER",
+                  normalize_raster_path(IQR, must_exist = !is_missing_path(IQR)))
+  # The correlogram is a csv: LShunter keeps its extension.
+  writer$optional("NOISE CORRELATION",
+                  normalize_file_path(NoiseCorr, must_exist = !is_missing_path(NoiseCorr)),
+                  COVER = NoiseCover)
+  writer$optional("RIL RASTER",
+                  normalize_raster_path(Landform, must_exist = !is_missing_path(Landform)))
+  writer$optional("DISTANCE TO CHANNEL RASTER",
+                  normalize_raster_path(DistChannel, must_exist = !is_missing_path(DistChannel)))
+  writer$optional("OUTPUT PATCH TABLE", normalize_file_path(OutTable))
+  if (!is.null(MinPatchSignificance)) {
+    writer$keyword("MINIMUM PATCH SIGNIFICANCE", MinPatchSignificance)
+  }
+
+  # --- Controls: simulated noise, and the gains -----------------------------
+  if (!is.null(NullRealizations)) {
+    writer$keyword("NULL SIMULATION", REALIZATIONS = NullRealizations, TILE = NullTile,
+                   SEED = NullSeed)
+  }
+  if (isTRUE(SignFlip)) writer$keyword("SIGN FLIP CONTROL", "YES")
 
   # --- Remaining parameter and outputs ------------------------------------
   writer$keyword("MINIMUM SIZE", MinSize)
@@ -2033,6 +2382,12 @@ LS_poly_input <- function(DEM,
 #' area, min/5/25/50/75/95 percent quantiles/max, and the shortest distance
 #' to a floodplain edge), and `<out_csv>_landforms_<i>.csv`, with the same
 #' quantiles for each landform class.
+#'
+#' If any raster's file name contains "DoD" (case-sensitive), LSstats treats
+#' the list as holding a DEM of difference and adds a Volume column (sum of
+#' the raster's values times the cell area) after Area in every per-polygon
+#' csv, so the column layout depends on the file names. The first line of
+#' each csv names the raster; the header follows.
 #'
 #' Distance to the floodplain edge (landform class 1) is either read from
 #' `distance_raster`, or computed by LSstats out to `radius` and optionally

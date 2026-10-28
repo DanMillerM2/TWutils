@@ -39,7 +39,12 @@ Required in mode 2.}
 
 \item{...}{Further arguments passed to \code{\link[=LShunterInput]{LShunterInput()}}:
 \code{threshold1}/\code{threshold2}, \code{GradientUnits}, \code{min1}/\code{min2},
-\code{maxAccum1}/\code{maxAccum2}, \code{Roads}/\code{road_buffer}, \code{MinSize}.}
+\code{maxAccum1}/\code{maxAccum2}, \code{Roads}/\code{road_buffer}, \code{MinSize}; and the
+optional patch table and controls: \code{CenDif}, \code{IQR}, \code{NoiseCorr},
+\code{NoiseCover}, \code{Landform}, \code{DistChannel}, \code{OutTable},
+\code{MinPatchSignificance}, \code{NullRealizations}/\code{NullTile}/\code{NullSeed},
+\code{SeedDenRef}/\code{SeedDenAlign}/\code{SeedDenMin}/\code{SeedDenWindow} and \code{SignFlip}.
+Align writes most of these inputs: see \code{\link[=align_input]{align_input()}}.}
 
 \item{Executable_dir}{Character: directory holding LShunter.exe.}
 }

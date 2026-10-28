@@ -53,6 +53,12 @@ to a floodplain edge), and \verb{<out_csv>_landforms_<i>.csv}, with the same
 quantiles for each landform class.
 }
 \details{
+If any raster's file name contains "DoD" (case-sensitive), LSstats treats
+the list as holding a DEM of difference and adds a Volume column (sum of
+the raster's values times the cell area) after Area in every per-polygon
+csv, so the column layout depends on the file names. The first line of
+each csv names the raster; the header follows.
+
 Distance to the floodplain edge (landform class 1) is either read from
 \code{distance_raster}, or computed by LSstats out to \code{radius} and optionally
 written to \code{out_distance_raster}.

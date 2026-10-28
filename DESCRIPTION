@@ -7,6 +7,16 @@ Description: What the package does (one paragraph).
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8
+Imports:
+    methods,
+    randomForest,
+    ROCR,
+    stats,
+    terra,
+    tibble,
+    utils
+Suggests:
+    caret
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.1.0
 RoxygenNote: 7.3.3

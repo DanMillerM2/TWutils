@@ -28,7 +28,8 @@ align(
   scratch_dir = NOFILE,
   executable_dir = NOFILE,
   program_name = "align",
-  convergence = 0
+  convergence = 0,
+  ...
 )
 }
 \arguments{
@@ -78,9 +79,21 @@ slope and aspect.}
 
 \item{program_name}{Character: base name of the executable.}
 
-\item{convergence}{Numeric: optional. Stop iterating once an iteration
-changes the RMSE by less than this many meters; \code{iterations} is then the
-maximum. 0 (the default) always runs all \code{iterations}.}
+\item{convergence}{Numeric: optional. Stop iterating once the aligned DEM
+changes by less than this many meters between iterations (the 99th
+percentile on steep ground, and the predicted remaining change; 0.005
+recommended); \code{iterations} is then the maximum. 0 (the default) always
+runs all \code{iterations}.}
+
+\item{...}{Further options passed to \code{\link[=align_input]{align_input()}}: \code{minPoints},
+\code{derivatives}, \code{applySlope}, \code{weights}, \code{groundMaskRadius},
+\code{waterGradThreshold}/\code{waterCurvThreshold}, \code{shift}, the tile options
+(\code{tileFit}, \code{tileSelect}, \code{cvBlock}, \code{cvBuffer}, \code{minTileSize},
+\code{maxTileSize}, \code{priorPoints}, \code{priorFraction}, \code{prior}), \code{outGradient},
+\code{densityLod} and its outputs (\code{outDenOutlier}, \code{outLod}, \code{outCenDif},
+\code{outExceed}), \code{localOffsetWindow}/\code{localOffsetMinPoints}, \code{outCorDif}
+and \code{outDX}/\code{outDY}/\code{outDZ}. With \code{tileSelect = "AUTO"}, \code{tileNx} and
+\code{tileNy} may stay 0.}
 }
 \value{
 0 on success. Stops with a message on any failure.
@@ -88,4 +101,7 @@ maximum. 0 (the default) always runs all \code{iterations}.}
 \description{
 A wrapper for Fortran program align. See \code{\link[=align_input]{align_input()}} for a description
 of the method.
+}
+\seealso{
+\code{\link[=align_input]{align_input()}}, \code{\link[=align_gradient_raster]{align_gradient_raster()}}
 }

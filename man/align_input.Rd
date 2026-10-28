@@ -28,7 +28,35 @@ align_input(
   scratch_dir,
   overwrite = TRUE,
   convergence = 0,
-  minPoints = 0
+  minPoints = 0,
+  derivatives = NULL,
+  applySlope = NULL,
+  weights = NULL,
+  groundMaskRadius = 0,
+  waterGradThreshold = NULL,
+  waterCurvThreshold = NULL,
+  shift = NULL,
+  tileFit = NULL,
+  tileSelect = NULL,
+  cvBlock = NULL,
+  cvBuffer = NULL,
+  minTileSize = NULL,
+  maxTileSize = NULL,
+  priorPoints = NULL,
+  priorFraction = NULL,
+  prior = NULL,
+  outGradient = FALSE,
+  densityLod = FALSE,
+  outDenOutlier = NOFILE,
+  outLod = NOFILE,
+  outCenDif = NOFILE,
+  outExceed = NOFILE,
+  outCorDif = NOFILE,
+  localOffsetWindow = NULL,
+  localOffsetMinPoints = NULL,
+  outDX = NOFILE,
+  outDY = NOFILE,
+  outDZ = NOFILE
 )
 }
 \arguments{
@@ -36,15 +64,19 @@ align_input(
 
 \item{alignDTM}{DTM to be aligned to the reference (full path).}
 
-\item{refGrnd}{ground-return density raster for the reference dataset.}
+\item{refGrnd}{Ground-return count raster for the reference survey: ground
+points per reference DTM cell (as ground_returns.R writes
+\code{ground_count_ref_grid}), not a density.}
 
-\item{alignGrnd}{ground-return density raster for the align dataset.}
+\item{alignGrnd}{Ground-return count raster for the align survey, on the
+reference DTM's grid.}
 
 \item{refDSM}{Reference surface-height raster (optional).}
 
 \item{alignDSM}{DSM to align (optional).}
 
-\item{iterations}{Number of iterations used to solve for the shift.}
+\item{iterations}{Number of iterations used to solve for the shift (the
+maximum, with \code{convergence}).}
 
 \item{k}{Number of interquartile ranges for the Tukey's fence that
 identifies outlying elevation differences.}
@@ -53,9 +85,11 @@ identifies outlying elevation differences.}
 
 \item{outDTM}{Output aligned DTM.}
 
-\item{tileNx, tileNy}{Number of tiles in the x and y directions.}
+\item{tileNx, tileNy}{Number of tiles in the x and y directions. With
+\code{tileSelect = "AUTO"} they may be 0 (omitted): Align chooses them.}
 
-\item{overlap}{Overlap between tiles, in meters.}
+\item{overlap}{Fractional overlap between tiles (0.5 = half a tile). NULL
+omits it (allowed with \code{tileSelect = "AUTO"}).}
 
 \item{radius}{Radius in meters for measuring slope and aspect.}
 
@@ -76,12 +110,78 @@ aspect.}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
 
-\item{convergence}{Stop iterating once an iteration changes the RMSE by
-less than this many meters (CONVERGENCE); 0 omits the keyword, so every
-iteration runs.}
+\item{convergence}{Stop iterating once the aligned DEM changes by less than
+this many meters between iterations: the 99th percentile on steep ground,
+and the predicted remaining change (CONVERGENCE; 0.005 recommended). 0
+omits the keyword, so every iteration runs.}
 
 \item{minPoints}{Minimum regression points for a tile to be solved
 (TILES MIN POINTS); 0 omits it, leaving Align's default (100000).}
+
+\item{derivatives}{"SIDED" (Align's default) or "CENTRAL" (recommended).}
+
+\item{applySlope}{APPLY SLOPE TERMS: "YES" (default), "NO" or "STABLE".}
+
+\item{weights}{WEIGHTS: "NONE" (default) or "IQR".}
+
+\item{groundMaskRadius}{GROUND MASK RADIUS (m): focal maximum applied to
+the ground-return mask; 0 omits it.}
+
+\item{waterGradThreshold, waterCurvThreshold}{MASK OPEN WATER thresholds;
+give both to mask inferred open water, or neither.}
+
+\item{shift}{SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
+(optional).}
+
+\item{tileFit}{TILES FIT: "SEPARATE" (default) or "JOINT" (one bilinear
+field; needed for \code{tileSelect}).}
+
+\item{tileSelect}{TILES SELECT: "NONE" (default), "REPORT", "CV", "AUTO" or
+"AUTO REPORT". "AUTO" chooses the tile size and prior strength by
+cross-validation over square tiles from \code{maxTileSize} down to
+\code{minTileSize}, and implies \code{tileFit = "JOINT"}.}
+
+\item{cvBlock, cvBuffer}{CV BLOCK and CV BUFFER (m): fold block size
+(Align's default 1000) and the buffer around held-out blocks (100).}
+
+\item{minTileSize, maxTileSize}{MIN SIZE and MAX SIZE (m) for
+\code{tileSelect = "AUTO"} (Align's defaults 500 and 8000). \code{minTileSize} is a
+judgement: a field finer than the scale of real change can absorb it.}
+
+\item{priorPoints, priorFraction}{TILES PRIOR POINTS and PRIOR FRACTION:
+strength of the tile prior (NULL omits each).}
+
+\item{prior}{TILES PRIOR: "NEIGHBOURS" or "GLOBAL".}
+
+\item{outGradient}{If TRUE, Align writes the gradient it uses,
+sin(slope) over \code{radius}, next to the reference DTM as
+\verb{<refDTM>_grad<radius>m} (OUTPUT GRADIENT RASTER: YES). LShunter requires
+this raster; \code{\link[=align_gradient_raster]{align_gradient_raster()}} gives its path.}
+
+\item{densityLod}{If TRUE, fit the level of detection from both surveys'
+ground-return density (DENSITY LOD: YES; needs \code{refGrnd} and
+\code{alignGrnd}). The five outputs below need it.}
+
+\item{outDenOutlier}{OUTPUT DENSITY OUTLIER RASTER (optional).}
+
+\item{outLod}{OUTPUT LOD RASTER (optional): the loss limit; Align also
+writes \verb{<outLod>_gain}, \verb{_centre} and \verb{_iqr} (the IQR raster LShunter's
+patch table uses).}
+
+\item{outCenDif}{OUTPUT CENTERED DIFFERENCE RASTER (optional): dz minus the
+expected dz, for patch depths and volumes.}
+
+\item{outExceed}{OUTPUT EXCEEDANCE PROBABILITY RASTER (optional): signed
+significance S = -log10(p), LShunter's recommended input.}
+
+\item{outCorDif}{OUTPUT CORRECTED DIFFERENCE RASTER (optional): dz minus
+the modelled canopy bias (needs both DSMs to differ from the difference).}
+
+\item{localOffsetWindow, localOffsetMinPoints}{LOCAL OFFSET WINDOW (m) and
+MIN POINTS (needs \code{densityLod}; not recommended as a default).}
+
+\item{outDX, outDY, outDZ}{OUTPUT DX/DY/DZ RASTER: the accumulated shifts
+applied to the aligned DTM (each optional).}
 }
 \value{
 The input file path, invisibly.
@@ -93,4 +193,18 @@ aspect, uses that to set slope- and aspect-dependent thresholds for
 filtering those differences, assembles and solves a set of linear equations
 for the optimal x-y-z shift of one DTM, then writes the shifted DTM along
 with elevation-difference and outlier rasters.
+}
+\details{
+Align is built from \code{alignSlope2.f90} and its modules in
+\code{GridUtilities/align_modules} (project \code{Projects/align}). Every argument
+after \code{minPoints} is optional and, left at its default, writes nothing, so
+Align uses its own default; they need Align at GridUtilities 8a08fa6 or
+later. The recommended setup for landslide mapping (see Align's CLAUDE.md)
+is \code{derivatives = "CENTRAL"}, \code{tileFit = "JOINT"} with
+\code{tileSelect = "AUTO"}, \code{convergence = 0.005} with \code{iterations = 8}, and,
+with both ground-return rasters, \code{densityLod = TRUE} with \code{outExceed} and
+\code{outGradient = TRUE}, which give LShunter its two inputs.
+}
+\seealso{
+\code{\link[=align_gradient_raster]{align_gradient_raster()}}
 }
