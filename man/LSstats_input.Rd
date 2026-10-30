@@ -13,7 +13,8 @@ LSstats_input(
   distance_raster = NOFILE,
   radius = NULL,
   out_distance_raster = NOFILE,
-  overwrite = TRUE
+  overwrite = TRUE,
+  patch_table = NOFILE
 )
 }
 \arguments{
@@ -39,6 +40,11 @@ floodplain edge. Ignored when \code{distance_raster} is supplied.}
 (optional; ignored when \code{distance_raster} is supplied).}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
+
+\item{patch_table}{LShunter's patch table (\code{OutTable} in
+\code{\link[=LShunterInput]{LShunterInput()}}; optional): adds each polygon's Volume, SD_Volume and
+Z_Volume. It must come from the LShunter run that wrote \code{polygon_raster};
+LSstats stops if labels or point counts differ.}
 }
 \value{
 0 on success.
@@ -53,11 +59,11 @@ to a floodplain edge), and \verb{<out_csv>_landforms_<i>.csv}, with the same
 quantiles for each landform class.
 }
 \details{
-If any raster's file name contains "DoD" (case-sensitive), LSstats treats
-the list as holding a DEM of difference and adds a Volume column (sum of
-the raster's values times the cell area) after Area in every per-polygon
-csv, so the column layout depends on the file names. The first line of
-each csv names the raster; the header follows.
+With \code{patch_table} (LShunter's patch table), every per-polygon csv also has
+Volume, SD_Volume and Z_Volume after Area: each patch's volume, its SD and
+z from LShunter (from Align's centred difference raster and noise model;
+-9999 where the table has none). Needs LSstats 1.1.0 or later. The first
+line of each csv names the raster; the header follows.
 
 Distance to the floodplain edge (landform class 1) is either read from
 \code{distance_raster}, or computed by LSstats out to \code{radius} and optionally

@@ -102,10 +102,16 @@ argument_checker <- function() {
 #' @param input_file Full path of the ASCII input file to hand it.
 #' @param executable_dir Directory holding the executable. There is no
 #'   default location: the caller must always supply it.
+#' @param expected_outputs Files a finished run writes (optional). An Intel
+#'   Fortran runtime error ("forrtl: severe ...") exits with code 0, so the
+#'   run counts as successful only if each of these exists and was written
+#'   during it.
 #'
-#' @return The exit code (0), invisibly. Stops on any non-zero exit code.
+#' @return The exit code (0), invisibly. Stops on any non-zero exit code, or
+#'   on a missing or stale expected output.
 #' @noRd
-run_program <- function(program_name, input_file, executable_dir = NULL) {
+run_program <- function(program_name, input_file, executable_dir = NULL,
+                        expected_outputs = character(0)) {
 
   if (is.null(executable_dir) || is_missing_path(executable_dir)) {
     stop("directory for executable file not provided", call. = FALSE)
@@ -119,9 +125,23 @@ run_program <- function(program_name, input_file, executable_dir = NULL) {
   # Both paths are quoted, so directories containing spaces work.
   command <- paste0('"', executable, '" "', input_file, '"')
 
+  start_time <- Sys.time() - 2  # file times on some volumes have 2 s resolution
   exit_code <- system(command, wait = TRUE)
   if (exit_code != 0) {
     stop(program_name, " failed with exit code ", exit_code, call. = FALSE)
+  }
+
+  if (length(expected_outputs)) {
+    missing <- expected_outputs[!file.exists(expected_outputs)]
+    present <- setdiff(expected_outputs, missing)
+    stale <- present[file.mtime(present) < start_time]
+    if (length(missing) || length(stale)) {
+      stop(program_name, " exited with code 0 but did not finish (look for a 'forrtl' ",
+           "error in its console output). ",
+           if (length(missing)) paste0("Not written: ", paste(missing, collapse = ", "), ". "),
+           if (length(stale)) paste0("Not updated: ", paste(stale, collapse = ", "), "."),
+           call. = FALSE)
+    }
   }
 
   invisible(exit_code)
@@ -1398,6 +1418,9 @@ LS_poly <- function(DEM = NOFILE,
 #'   the floodplain edge.
 #' @param out_distance_raster Character: output raster for the computed
 #'   distance (optional).
+#' @param patch_table Character: LShunter's patch table (optional): adds each
+#'   polygon's volume, its SD and z to the per-polygon csv files (LSstats
+#'   1.1.0 or later).
 #' @param executable_dir Character: directory holding LSstats.exe. There is
 #'   no default location: it must always be supplied, unless `input_file`
 #'   supplies its own `EXECUTABLE DIR` keyword.
@@ -1414,7 +1437,10 @@ LSstats <- function(input_file = NOFILE,
                     distance_raster = NOFILE,
                     radius = -9999,
                     out_distance_raster = NOFILE,
+                    patch_table = NOFILE,
                     executable_dir = NOFILE) {
+
+  expected <- character(0)  # the csv files a finished run has written (mode 2)
 
   if (!is_missing_path(input_file)) {
 
@@ -1446,21 +1472,30 @@ LSstats <- function(input_file = NOFILE,
     } else {
       check$number(radius, "radius")
     }
+    if (!is_missing_path(patch_table)) {
+      check$input_file(paste0(remove_extension(patch_table, "csv"), ".csv"), "patch_table")
+    }
     check$report()
 
     LSstats_input(polygon_raster, landform_raster, rasters, out_csv,
                   scratch_dir,
                   distance_raster = distance_raster,
                   radius = radius,
-                  out_distance_raster = out_distance_raster)
+                  out_distance_raster = out_distance_raster,
+                  patch_table = patch_table)
 
     input_file <- input_file_for("LSstats", scratch_dir)
+
+    # LSstats writes <out_csv>_<i>.csv, then <out_csv>_landforms_<i>.csv, per raster.
+    base_csv <- remove_extension(normalize_file_path(out_csv), "csv")
+    i <- seq_along(raster_files)
+    expected <- c(paste0(base_csv, "_", i, ".csv"), paste0(base_csv, "_landforms_", i, ".csv"))
   }
 
   check <- argument_checker()
   check$directory(executable_dir, "executable_dir")
   check$report()
-  run_program("LSstats", input_file, executable_dir)
+  run_program("LSstats", input_file, executable_dir, expected_outputs = expected)
   0L
 }
 

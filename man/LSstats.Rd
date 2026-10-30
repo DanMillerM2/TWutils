@@ -14,6 +14,7 @@ LSstats(
   distance_raster = NOFILE,
   radius = -9999,
   out_distance_raster = NOFILE,
+  patch_table = NOFILE,
   executable_dir = NOFILE
 )
 }
@@ -42,6 +43,10 @@ the floodplain edge.}
 
 \item{out_distance_raster}{Character: output raster for the computed
 distance (optional).}
+
+\item{patch_table}{Character: LShunter's patch table (optional): adds each
+polygon's volume, its SD and z to the per-polygon csv files (LSstats
+1.1.0 or later).}
 
 \item{executable_dir}{Character: directory holding LSstats.exe. There is
 no default location: it must always be supplied, unless \code{input_file}

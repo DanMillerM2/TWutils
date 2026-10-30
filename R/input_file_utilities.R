@@ -2383,11 +2383,11 @@ LS_poly_input <- function(DEM,
 #' to a floodplain edge), and `<out_csv>_landforms_<i>.csv`, with the same
 #' quantiles for each landform class.
 #'
-#' If any raster's file name contains "DoD" (case-sensitive), LSstats treats
-#' the list as holding a DEM of difference and adds a Volume column (sum of
-#' the raster's values times the cell area) after Area in every per-polygon
-#' csv, so the column layout depends on the file names. The first line of
-#' each csv names the raster; the header follows.
+#' With `patch_table` (LShunter's patch table), every per-polygon csv also has
+#' Volume, SD_Volume and Z_Volume after Area: each patch's volume, its SD and
+#' z from LShunter (from Align's centred difference raster and noise model;
+#' -9999 where the table has none). Needs LSstats 1.1.0 or later. The first
+#' line of each csv names the raster; the header follows.
 #'
 #' Distance to the floodplain edge (landform class 1) is either read from
 #' `distance_raster`, or computed by LSstats out to `radius` and optionally
@@ -2407,6 +2407,10 @@ LS_poly_input <- function(DEM,
 #' @param out_distance_raster Output raster for the computed distance
 #'   (optional; ignored when `distance_raster` is supplied).
 #' @param overwrite If TRUE, allow overwriting an existing input file.
+#' @param patch_table LShunter's patch table (`OutTable` in
+#'   [LShunterInput()]; optional): adds each polygon's Volume, SD_Volume and
+#'   Z_Volume. It must come from the LShunter run that wrote `polygon_raster`;
+#'   LSstats stops if labels or point counts differ.
 #'
 #' @return 0 on success.
 #' @export
@@ -2418,7 +2422,8 @@ LSstats_input <- function(polygon_raster,
                           distance_raster = NOFILE,
                           radius = NULL,
                           out_distance_raster = NOFILE,
-                          overwrite = TRUE) {
+                          overwrite = TRUE,
+                          patch_table = NOFILE) {
 
   if (is_missing_path(distance_raster) && is.null(radius)) {
     stop("LSstats_input(): distance_raster was not supplied, so radius is ",
@@ -2437,6 +2442,12 @@ LSstats_input <- function(polygon_raster,
                  normalize_raster_path(polygon_raster, must_exist = TRUE))
   writer$keyword("LANDFORM RASTER",
                  normalize_raster_path(landform_raster, must_exist = TRUE))
+  # The patch table is a csv, given with or without its extension.
+  if (!is_missing_path(patch_table)) {
+    patch_table <- paste0(remove_extension(patch_table, "csv"), ".csv")
+  }
+  writer$optional("LSHUNTER PATCH TABLE",
+                  normalize_file_path(patch_table, must_exist = !is_missing_path(patch_table)))
 
   # --- Distance to floodplain edge: read it, or compute it ----------------
   if (!is_missing_path(distance_raster)) {
