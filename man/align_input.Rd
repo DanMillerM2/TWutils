@@ -35,6 +35,16 @@ align_input(
   groundMaskRadius = 0,
   waterGradThreshold = NULL,
   waterCurvThreshold = NULL,
+  openWaterMinArea = NULL,
+  waterMask = NOFILE,
+  waterMaskBuffer = NULL,
+  refWater = NOFILE,
+  alignWater = NOFILE,
+  waterMinDensity = NULL,
+  waterWindow = NULL,
+  coverageMin = NULL,
+  coverageBlock = NULL,
+  outWaterMask = NOFILE,
   shift = NULL,
   tileFit = NULL,
   tileSelect = NULL,
@@ -128,7 +138,32 @@ omits the keyword, so every iteration runs.}
 the ground-return mask; 0 omits it.}
 
 \item{waterGradThreshold, waterCurvThreshold}{MASK OPEN WATER thresholds;
-give both to mask inferred open water, or neither.}
+give both to mask inferred open water (flat, hydro-flattened surfaces), or
+neither.}
+
+\item{openWaterMinArea}{MASK OPEN WATER MIN AREA (m2): connected flat areas
+smaller than this aren't water (Align 1.1.0+; NULL keeps every flat cell).}
+
+\item{waterMask}{WATER MASK (Align 1.1.0+): a raster on any grid whose
+nonzero cells are water, e.g. hydrography polygons rasterized onto the
+reference grid; left out of everything. \code{waterMaskBuffer} widens it (m).}
+
+\item{refWater, alignWater}{WATER POINTS (Align 1.1.0+): each survey's
+water-return (LAS class 9) count raster on the reference grid
+(\code{ground_returns.R}'s \code{water_count_ref_grid.flt}); either or both. A cell
+is water where a survey's water returns over the window reach
+\code{waterMinDensity} per m2 (Align's default 0.1) and outnumber its ground
+returns. \code{waterWindow} is the window half-width in points (default 1).}
+
+\item{coverageMin, coverageBlock}{COVERAGE (Align 1.1.0+): blocks of
+\code{coverageBlock} m (default 50) where either survey has fewer than
+\code{coverageMin} ground returns per m2 (default 0.02) are left out -- missing
+tiles, snow-covered tiles -- instead of being read as sparse ground or
+water. Needs \code{refGrnd} and \code{alignGrnd}; give either to turn it on.}
+
+\item{outWaterMask}{OUTPUT WATER MASK RASTER (optional): why each cell was
+left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
+coverage).}
 
 \item{shift}{SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 (optional).}

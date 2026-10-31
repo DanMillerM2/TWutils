@@ -310,7 +310,10 @@ independently and there is no compiler or CI linking them.
   **Updated 2026-10-28 for GridUtilities 8a08fa6:** `align_input()` writes every alignSlope2
   keyword. After the original positional arguments (unchanged, so old calls write the same file)
   come optional ones that write nothing at their defaults: `derivatives`, `applySlope`,
-  `weights`, `groundMaskRadius`, `waterGradThreshold`/`waterCurvThreshold` (MASK OPEN WATER),
+  `weights`, `groundMaskRadius`, `waterGradThreshold`/`waterCurvThreshold` (MASK OPEN WATER;
+  `openWaterMinArea` its MIN AREA), and for Align 1.1.0+ `waterMask`/`waterMaskBuffer` (WATER
+  MASK), `refWater`/`alignWater`/`waterMinDensity`/`waterWindow` (WATER POINTS),
+  `coverageMin`/`coverageBlock` (COVERAGE) and `outWaterMask` (OUTPUT WATER MASK RASTER),
   `shift` (SHIFT IT), the `TILES` sub-fields `tileFit`, `tileSelect` (`"AUTO"` lets `tileNx`/
   `tileNy` be 0 and omits X and Y), `cvBlock`, `cvBuffer`, `minTileSize`, `maxTileSize`,
   `priorPoints`, `priorFraction`, `prior`; `outGradient` (OUTPUT GRADIENT RASTER: YES), `densityLod`

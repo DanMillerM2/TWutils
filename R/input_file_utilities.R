@@ -1688,7 +1688,27 @@ accum_input <- function(dem,
 #' @param groundMaskRadius GROUND MASK RADIUS (m): focal maximum applied to
 #'   the ground-return mask; 0 omits it.
 #' @param waterGradThreshold,waterCurvThreshold MASK OPEN WATER thresholds;
-#'   give both to mask inferred open water, or neither.
+#'   give both to mask inferred open water (flat, hydro-flattened surfaces), or
+#'   neither.
+#' @param openWaterMinArea MASK OPEN WATER MIN AREA (m2): connected flat areas
+#'   smaller than this aren't water (Align 1.1.0+; NULL keeps every flat cell).
+#' @param waterMask WATER MASK (Align 1.1.0+): a raster on any grid whose
+#'   nonzero cells are water, e.g. hydrography polygons rasterized onto the
+#'   reference grid; left out of everything. `waterMaskBuffer` widens it (m).
+#' @param refWater,alignWater WATER POINTS (Align 1.1.0+): each survey's
+#'   water-return (LAS class 9) count raster on the reference grid
+#'   (`ground_returns.R`'s `water_count_ref_grid.flt`); either or both. A cell
+#'   is water where a survey's water returns over the window reach
+#'   `waterMinDensity` per m2 (Align's default 0.1) and outnumber its ground
+#'   returns. `waterWindow` is the window half-width in points (default 1).
+#' @param coverageMin,coverageBlock COVERAGE (Align 1.1.0+): blocks of
+#'   `coverageBlock` m (default 50) where either survey has fewer than
+#'   `coverageMin` ground returns per m2 (default 0.02) are left out -- missing
+#'   tiles, snow-covered tiles -- instead of being read as sparse ground or
+#'   water. Needs `refGrnd` and `alignGrnd`; give either to turn it on.
+#' @param outWaterMask OUTPUT WATER MASK RASTER (optional): why each cell was
+#'   left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
+#'   coverage).
 #' @param shift SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 #'   (optional).
 #' @param tileFit TILES FIT: "SEPARATE" (default) or "JOINT" (one bilinear
@@ -1760,6 +1780,16 @@ align_input <- function(refDTM,
                         groundMaskRadius = 0,
                         waterGradThreshold = NULL,
                         waterCurvThreshold = NULL,
+                        openWaterMinArea = NULL,
+                        waterMask = NOFILE,
+                        waterMaskBuffer = NULL,
+                        refWater = NOFILE,
+                        alignWater = NOFILE,
+                        waterMinDensity = NULL,
+                        waterWindow = NULL,
+                        coverageMin = NULL,
+                        coverageBlock = NULL,
+                        outWaterMask = NOFILE,
                         shift = NULL,
                         tileFit = NULL,
                         tileSelect = NULL,
@@ -1825,6 +1855,23 @@ align_input <- function(refDTM,
     stop("align_input(): give both waterGradThreshold and waterCurvThreshold, or neither.",
          call. = FALSE)
   }
+  if (!is.null(openWaterMinArea) && is.null(waterGradThreshold)) {
+    stop("align_input(): openWaterMinArea needs waterGradThreshold and waterCurvThreshold.",
+         call. = FALSE)
+  }
+  if (!is.null(waterMaskBuffer) && is_missing_path(waterMask)) {
+    stop("align_input(): waterMaskBuffer needs waterMask.", call. = FALSE)
+  }
+  water_points <- !is_missing_path(refWater) || !is_missing_path(alignWater)
+  if (!water_points && (!is.null(waterMinDensity) || !is.null(waterWindow))) {
+    stop("align_input(): waterMinDensity and waterWindow need refWater and/or alignWater.",
+         call. = FALSE)
+  }
+  coverage <- !is.null(coverageMin) || !is.null(coverageBlock)
+  if (coverage && (is_missing_path(refGrnd) || is_missing_path(alignGrnd))) {
+    stop("align_input(): coverageMin/coverageBlock need both ground-return rasters (refGrnd ",
+         "and alignGrnd).", call. = FALSE)
+  }
   if (!is.null(shift) && length(shift) != 3L) {
     stop("align_input(): shift must be c(dx, dy, dz).", call. = FALSE)
   }
@@ -1848,8 +1895,21 @@ align_input <- function(refDTM,
   if (groundMaskRadius > 0) writer$keyword("GROUND MASK RADIUS", groundMaskRadius)
   if (!is.null(waterGradThreshold)) {
     writer$keyword("MASK OPEN WATER", `GRAD THRESHOLD` = waterGradThreshold,
-                   `CURVATURE THRESHOLD` = waterCurvThreshold)
+                   `CURVATURE THRESHOLD` = waterCurvThreshold, `MIN AREA` = openWaterMinArea)
   }
+  # Water and gaps in coverage left out of everything (Align 1.1.0+)
+  if (!is_missing_path(waterMask)) {
+    writer$keyword("WATER MASK", FILE = normalize_raster_path(waterMask, must_exist = TRUE),
+                   BUFFER = waterMaskBuffer)
+  }
+  if (water_points) {
+    writer$keyword("WATER POINTS",
+                   REFERENCE = if (!is_missing_path(refWater)) normalize_raster_path(refWater, must_exist = TRUE),
+                   ALIGN = if (!is_missing_path(alignWater)) normalize_raster_path(alignWater, must_exist = TRUE),
+                   MINIMUM = waterMinDensity, WINDOW = waterWindow)
+  }
+  if (coverage) writer$keyword("COVERAGE", MINIMUM = coverageMin, BLOCK = coverageBlock)
+  writer$optional("OUTPUT WATER MASK RASTER", normalize_raster_path(outWaterMask))
   if (!is.null(shift)) writer$keyword("SHIFT IT", DX = shift[1], DY = shift[2], DZ = shift[3])
 
   # --- Solution parameters ------------------------------------------------
