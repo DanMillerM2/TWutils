@@ -1654,8 +1654,10 @@ accum_input <- function(dem,
 #'   `ground_count_ref_grid`), not a density.
 #' @param alignGrnd Ground-return count raster for the align survey, on the
 #'   reference DTM's grid.
-#' @param refDSM Reference surface-height raster (optional).
-#' @param alignDSM DSM to align (optional).
+#' @param refDSM,alignDSM The two surveys' surface-height rasters (DSMs).
+#'   Required (Align 1.1.0+): canopy height sets Align's canopy classes, stable
+#'   ground and the level of detection's open-ground rules. Only a `shift` test
+#'   runs without them.
 #' @param iterations Number of iterations used to solve for the shift (the
 #'   maximum, with `convergence`).
 #' @param k Number of interquartile ranges for the Tukey's fence that
@@ -1701,11 +1703,13 @@ accum_input <- function(dem,
 #'   is water where a survey's water returns over the window reach
 #'   `waterMinDensity` per m2 (Align's default 0.1) and outnumber its ground
 #'   returns. `waterWindow` is the window half-width in points (default 1).
-#' @param coverageMin,coverageBlock COVERAGE (Align 1.1.0+): blocks of
-#'   `coverageBlock` m (default 50) where either survey has fewer than
+#' @param coverage,coverageMin,coverageBlock COVERAGE (Align 1.1.0+): blocks
+#'   of `coverageBlock` m (default 50) where either survey has fewer than
 #'   `coverageMin` ground returns per m2 (default 0.02) are left out -- missing
 #'   tiles, snow-covered tiles -- instead of being read as sparse ground or
-#'   water. Needs `refGrnd` and `alignGrnd`; give either to turn it on.
+#'   water. Align does this by default whenever `refGrnd` and `alignGrnd` are
+#'   both given; `coverage = FALSE` turns it off (COVERAGE: NO), and
+#'   `coverageMin`/`coverageBlock` change it.
 #' @param outWaterMask OUTPUT WATER MASK RASTER (optional): why each cell was
 #'   left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
 #'   coverage).
@@ -1787,6 +1791,7 @@ align_input <- function(refDTM,
                         alignWater = NOFILE,
                         waterMinDensity = NULL,
                         waterWindow = NULL,
+                        coverage = TRUE,
                         coverageMin = NULL,
                         coverageBlock = NULL,
                         outWaterMask = NOFILE,
@@ -1867,13 +1872,21 @@ align_input <- function(refDTM,
     stop("align_input(): waterMinDensity and waterWindow need refWater and/or alignWater.",
          call. = FALSE)
   }
-  coverage <- !is.null(coverageMin) || !is.null(coverageBlock)
-  if (coverage && (is_missing_path(refGrnd) || is_missing_path(alignGrnd))) {
+  coverage_settings <- !is.null(coverageMin) || !is.null(coverageBlock)
+  if (!isTRUE(coverage) && coverage_settings) {
+    stop("align_input(): coverageMin/coverageBlock can't be used with coverage = FALSE.",
+         call. = FALSE)
+  }
+  if (coverage_settings && (is_missing_path(refGrnd) || is_missing_path(alignGrnd))) {
     stop("align_input(): coverageMin/coverageBlock need both ground-return rasters (refGrnd ",
          "and alignGrnd).", call. = FALSE)
   }
   if (!is.null(shift) && length(shift) != 3L) {
     stop("align_input(): shift must be c(dx, dy, dz).", call. = FALSE)
+  }
+  if (is.null(shift) && (is_missing_path(refDSM) || is_missing_path(alignDSM))) {
+    stop("align_input(): refDSM and alignDSM are required (Align needs both surveys' canopy ",
+         "height).", call. = FALSE)
   }
 
   writer <- input_writer("align", scratch_dir, "input_align.txt", overwrite)
@@ -1908,7 +1921,12 @@ align_input <- function(refDTM,
                    ALIGN = if (!is_missing_path(alignWater)) normalize_raster_path(alignWater, must_exist = TRUE),
                    MINIMUM = waterMinDensity, WINDOW = waterWindow)
   }
-  if (coverage) writer$keyword("COVERAGE", MINIMUM = coverageMin, BLOCK = coverageBlock)
+  # On by default in Align with both ground-return rasters: written only to change or turn it off
+  if (!isTRUE(coverage)) {
+    writer$keyword("COVERAGE", "NO")
+  } else if (coverage_settings) {
+    writer$keyword("COVERAGE", MINIMUM = coverageMin, BLOCK = coverageBlock)
+  }
   writer$optional("OUTPUT WATER MASK RASTER", normalize_raster_path(outWaterMask))
   if (!is.null(shift)) writer$keyword("SHIFT IT", DX = shift[1], DY = shift[2], DZ = shift[3])
 

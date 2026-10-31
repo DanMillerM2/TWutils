@@ -313,7 +313,8 @@ independently and there is no compiler or CI linking them.
   `weights`, `groundMaskRadius`, `waterGradThreshold`/`waterCurvThreshold` (MASK OPEN WATER;
   `openWaterMinArea` its MIN AREA), and for Align 1.1.0+ `waterMask`/`waterMaskBuffer` (WATER
   MASK), `refWater`/`alignWater`/`waterMinDensity`/`waterWindow` (WATER POINTS),
-  `coverageMin`/`coverageBlock` (COVERAGE) and `outWaterMask` (OUTPUT WATER MASK RASTER),
+  `coverage`/`coverageMin`/`coverageBlock` (COVERAGE: on in Align by default with both ground
+  rasters; `coverage = FALSE` writes COVERAGE: NO) and `outWaterMask` (OUTPUT WATER MASK RASTER),
   `shift` (SHIFT IT), the `TILES` sub-fields `tileFit`, `tileSelect` (`"AUTO"` lets `tileNx`/
   `tileNy` be 0 and omits X and Y), `cvBlock`, `cvBuffer`, `minTileSize`, `maxTileSize`,
   `priorPoints`, `priorFraction`, `prior`; `outGradient` (OUTPUT GRADIENT RASTER: YES), `densityLod`

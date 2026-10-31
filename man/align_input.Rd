@@ -42,6 +42,7 @@ align_input(
   alignWater = NOFILE,
   waterMinDensity = NULL,
   waterWindow = NULL,
+  coverage = TRUE,
   coverageMin = NULL,
   coverageBlock = NULL,
   outWaterMask = NOFILE,
@@ -81,9 +82,10 @@ points per reference DTM cell (as ground_returns.R writes
 \item{alignGrnd}{Ground-return count raster for the align survey, on the
 reference DTM's grid.}
 
-\item{refDSM}{Reference surface-height raster (optional).}
-
-\item{alignDSM}{DSM to align (optional).}
+\item{refDSM, alignDSM}{The two surveys' surface-height rasters (DSMs).
+Required (Align 1.1.0+): canopy height sets Align's canopy classes, stable
+ground and the level of detection's open-ground rules. Only a \code{shift} test
+runs without them.}
 
 \item{iterations}{Number of iterations used to solve for the shift (the
 maximum, with \code{convergence}).}
@@ -155,11 +157,13 @@ is water where a survey's water returns over the window reach
 \code{waterMinDensity} per m2 (Align's default 0.1) and outnumber its ground
 returns. \code{waterWindow} is the window half-width in points (default 1).}
 
-\item{coverageMin, coverageBlock}{COVERAGE (Align 1.1.0+): blocks of
-\code{coverageBlock} m (default 50) where either survey has fewer than
+\item{coverage, coverageMin, coverageBlock}{COVERAGE (Align 1.1.0+): blocks
+of \code{coverageBlock} m (default 50) where either survey has fewer than
 \code{coverageMin} ground returns per m2 (default 0.02) are left out -- missing
 tiles, snow-covered tiles -- instead of being read as sparse ground or
-water. Needs \code{refGrnd} and \code{alignGrnd}; give either to turn it on.}
+water. Align does this by default whenever \code{refGrnd} and \code{alignGrnd} are
+both given; \code{coverage = FALSE} turns it off (COVERAGE: NO), and
+\code{coverageMin}/\code{coverageBlock} change it.}
 
 \item{outWaterMask}{OUTPUT WATER MASK RASTER (optional): why each cell was
 left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
