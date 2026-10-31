@@ -2116,6 +2116,12 @@ huntLSinput <- function(DEM,
 #'   `SeedDenWindow` is the window half-width in points).
 #' @param SignFlip If TRUE, also run the same rules on the negated input
 #'   (SIGN FLIP CONTROL): the gain patches, a control for false alarms.
+#' @param CanopyRefDSM,CanopyRefDEM,CanopyAlignDSM,CanopyAlignDEM CANOPY
+#'   HEIGHT (LShunter 1.2.0+; optional, all four together, needs `OutTable`):
+#'   each survey's DSM and DEM, so the patch table gives each patch's mean
+#'   canopy height (DSM - DEM) in the reference and the aligned survey and its
+#'   change. `CanopyAlignDEM` is the align survey's original DEM (the one its
+#'   DSM matches), not Align's shifted output.
 #'
 #' @return 0 on success.
 #' @export
@@ -2151,7 +2157,11 @@ LShunterInput <- function(Outlier = NOFILE,
                           SeedDenAlign = NOFILE,
                           SeedDenMin = NULL,
                           SeedDenWindow = NULL,
-                          SignFlip = FALSE) {
+                          SignFlip = FALSE,
+                          CanopyRefDSM = NOFILE,
+                          CanopyRefDEM = NOFILE,
+                          CanopyAlignDSM = NOFILE,
+                          CanopyAlignDEM = NOFILE) {
 
   # The patch table and the noise model need these together (LShunter stops otherwise).
   NoiseCover <- check_choice(NoiseCover, c("ALL", "OPEN", "VEGETATED"), "NoiseCover")
@@ -2177,6 +2187,17 @@ LShunterInput <- function(Outlier = NOFILE,
   if (seed_density && (is_missing_path(SeedDenRef) || is_missing_path(SeedDenAlign) ||
                        is.null(SeedDenMin))) {
     stop("LShunterInput(): seed density needs SeedDenRef, SeedDenAlign and SeedDenMin.",
+         call. = FALSE)
+  }
+  canopy_files <- list(CanopyRefDSM, CanopyRefDEM, CanopyAlignDSM, CanopyAlignDEM)
+  canopy_given <- !vapply(canopy_files, is_missing_path, logical(1))
+  canopy <- any(canopy_given)
+  if (canopy && !all(canopy_given)) {
+    stop("LShunterInput(): canopy height needs CanopyRefDSM, CanopyRefDEM, CanopyAlignDSM ",
+         "and CanopyAlignDEM together.", call. = FALSE)
+  }
+  if (canopy && is_missing_path(OutTable)) {
+    stop("LShunterInput(): canopy height is reported in the patch table: it needs OutTable.",
          call. = FALSE)
   }
 
@@ -2265,6 +2286,14 @@ LShunterInput <- function(Outlier = NOFILE,
   writer$optional("OUTPUT PATCH TABLE", normalize_file_path(OutTable))
   if (!is.null(MinPatchSignificance)) {
     writer$keyword("MINIMUM PATCH SIGNIFICANCE", MinPatchSignificance)
+  }
+  # Each survey's DSM and DEM: mean canopy height per patch, and its change
+  if (canopy) {
+    writer$keyword("CANOPY HEIGHT",
+                   `REFERENCE DSM` = normalize_raster_path(CanopyRefDSM, must_exist = TRUE),
+                   `REFERENCE DEM` = normalize_raster_path(CanopyRefDEM, must_exist = TRUE),
+                   `ALIGN DSM` = normalize_raster_path(CanopyAlignDSM, must_exist = TRUE),
+                   `ALIGN DEM` = normalize_raster_path(CanopyAlignDEM, must_exist = TRUE))
   }
 
   # --- Controls: simulated noise, and the gains -----------------------------

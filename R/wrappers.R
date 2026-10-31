@@ -1230,7 +1230,9 @@ huntLS <- function(DEM = NOFILE,
 #'   optional patch table and controls: `CenDif`, `IQR`, `NoiseCorr`,
 #'   `NoiseCover`, `Landform`, `DistChannel`, `OutTable`,
 #'   `MinPatchSignificance`, `NullRealizations`/`NullTile`/`NullSeed`,
-#'   `SeedDenRef`/`SeedDenAlign`/`SeedDenMin`/`SeedDenWindow` and `SignFlip`.
+#'   `SeedDenRef`/`SeedDenAlign`/`SeedDenMin`/`SeedDenWindow`, `SignFlip`, and
+#'   `CanopyRefDSM`/`CanopyRefDEM`/`CanopyAlignDSM`/`CanopyAlignDEM` (each
+#'   patch's mean canopy height in both surveys, LShunter 1.2.0+).
 #'   Align writes most of these inputs: see [align_input()].
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'

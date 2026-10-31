@@ -37,7 +37,11 @@ LShunterInput(
   SeedDenAlign = NOFILE,
   SeedDenMin = NULL,
   SeedDenWindow = NULL,
-  SignFlip = FALSE
+  SignFlip = FALSE,
+  CanopyRefDSM = NOFILE,
+  CanopyRefDEM = NOFILE,
+  CanopyAlignDSM = NOFILE,
+  CanopyAlignDEM = NOFILE
 )
 }
 \arguments{
@@ -120,6 +124,13 @@ patches only where both surveys' local ground-return density is at least
 
 \item{SignFlip}{If TRUE, also run the same rules on the negated input
 (SIGN FLIP CONTROL): the gain patches, a control for false alarms.}
+
+\item{CanopyRefDSM, CanopyRefDEM, CanopyAlignDSM, CanopyAlignDEM}{CANOPY
+HEIGHT (LShunter 1.2.0+; optional, all four together, needs \code{OutTable}):
+each survey's DSM and DEM, so the patch table gives each patch's mean
+canopy height (DSM - DEM) in the reference and the aligned survey and its
+change. \code{CanopyAlignDEM} is the align survey's original DEM (the one its
+DSM matches), not Align's shifted output.}
 }
 \value{
 0 on success.
