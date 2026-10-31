@@ -43,7 +43,9 @@ Required in mode 2.}
 optional patch table and controls: \code{CenDif}, \code{IQR}, \code{NoiseCorr},
 \code{NoiseCover}, \code{Landform}, \code{DistChannel}, \code{OutTable},
 \code{MinPatchSignificance}, \code{NullRealizations}/\code{NullTile}/\code{NullSeed},
-\code{SeedDenRef}/\code{SeedDenAlign}/\code{SeedDenMin}/\code{SeedDenWindow} and \code{SignFlip}.
+\code{SeedDenRef}/\code{SeedDenAlign}/\code{SeedDenMin}/\code{SeedDenWindow}, \code{SignFlip}, and
+\code{CanopyRefDSM}/\code{CanopyRefDEM}/\code{CanopyAlignDSM}/\code{CanopyAlignDEM} (each
+patch's mean canopy height in both surveys, LShunter 1.2.0+).
 Align writes most of these inputs: see \code{\link[=align_input]{align_input()}}.}
 
 \item{Executable_dir}{Character: directory holding LShunter.exe.}
