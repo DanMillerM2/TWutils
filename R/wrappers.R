@@ -1028,8 +1028,8 @@ resample <- function(in_raster = NOFILE,
 #' @param alignDTM Character: DTM to align to the reference.
 #' @param refGrnd Character: Reference ground-density raster.
 #' @param alignGrnd Character: Align ground-density raster.
-#' @param refDSM Character: reference DSM (optional).
-#' @param alignDSM Character: DSM to align (optional).
+#' @param refDSM Character: reference DSM (required, Align 1.1.0+).
+#' @param alignDSM Character: DSM to align (required, Align 1.1.0+).
 #' @param iterations Numeric: number of iterations used to solve for the shift.
 #' @param k Numeric: number of interquartile ranges from q1 and q3 to use as a
 #'   Tukey's fence for outlier removal.

@@ -41,9 +41,9 @@ align(
 
 \item{alignGrnd}{Character: Align ground-density raster.}
 
-\item{refDSM}{Character: reference DSM (optional).}
+\item{refDSM}{Character: reference DSM (required, Align 1.1.0+).}
 
-\item{alignDSM}{Character: DSM to align (optional).}
+\item{alignDSM}{Character: DSM to align (required, Align 1.1.0+).}
 
 \item{iterations}{Numeric: number of iterations used to solve for the shift.}
 
