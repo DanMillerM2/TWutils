@@ -46,6 +46,11 @@ align_input(
   coverageMin = NULL,
   coverageBlock = NULL,
   outWaterMask = NOFILE,
+  suspectGround = NULL,
+  suspectHeight = NULL,
+  suspectWindow = NULL,
+  suspectCanopy = NULL,
+  suspectBuffer = NULL,
   matchSmoothness = NULL,
   matchFit = NULL,
   matchMaxSigma = NULL,
@@ -171,7 +176,18 @@ both given; \code{coverage = FALSE} turns it off (COVERAGE: NO), and
 
 \item{outWaterMask}{OUTPUT WATER MASK RASTER (optional): why each cell was
 left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
-coverage).}
+coverage, 5 suspect ground).}
+
+\item{suspectGround}{SUSPECT GROUND (Align 1.1.0+): "REFERENCE", "ALIGN" or
+"BOTH" replaces bumps in that DTM that the other lacks -- vegetation or
+other returns classified as ground, which read as loss (reference) or gain
+(align). A cell is suspect where the DTM stands \code{suspectHeight} m (default
+0.3) above the median of its \code{suspectWindow} (m, default 5) and that much
+more than the other DTM does (ridges, high in both, are kept), where the
+other DTM isn't depressed (scars are kept), under at
+least \code{suspectCanopy} m of canopy (default 2); grown over neighbours that
+pass at half the height, up to \code{suspectBuffer} m (default 2). The bumped
+DTM is replaced there by the local median. NULL (default) keeps everything.}
 
 \item{matchSmoothness}{MATCH SMOOTHNESS: "LOCAL" or "GLOBAL" smooths one DTM
 (Gaussian) after the global fit so dz no longer depends on the local

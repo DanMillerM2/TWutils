@@ -1232,7 +1232,9 @@ huntLS <- function(DEM = NOFILE,
 #'   `MinPatchSignificance`, `NullRealizations`/`NullTile`/`NullSeed`,
 #'   `SeedDenRef`/`SeedDenAlign`/`SeedDenMin`/`SeedDenWindow`, `SignFlip`, and
 #'   `CanopyRefDSM`/`CanopyRefDEM`/`CanopyAlignDSM`/`CanopyAlignDEM` (each
-#'   patch's mean canopy height in both surveys, LShunter 1.2.0+).
+#'   patch's mean canopy height in both surveys, LShunter 1.2.0+), and
+#'   `AreaWindows`/`AreaThreshold`/`AreaMinFraction`/`OutAreaZ` (AREA SEEDS,
+#'   LShunter 1.3.0+).
 #'   Align writes most of these inputs: see [align_input()].
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'
