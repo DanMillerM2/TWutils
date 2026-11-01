@@ -46,6 +46,10 @@ align_input(
   coverageMin = NULL,
   coverageBlock = NULL,
   outWaterMask = NOFILE,
+  matchSmoothness = NULL,
+  matchFit = NULL,
+  matchMaxSigma = NULL,
+  outSigma = NOFILE,
   shift = NULL,
   tileFit = NULL,
   tileSelect = NULL,
@@ -168,6 +172,15 @@ both given; \code{coverage = FALSE} turns it off (COVERAGE: NO), and
 \item{outWaterMask}{OUTPUT WATER MASK RASTER (optional): why each cell was
 left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
 coverage).}
+
+\item{matchSmoothness}{MATCH SMOOTHNESS: "LOCAL" or "GLOBAL" smooths one DTM
+(Gaussian) after the global fit so dz no longer depends on the local
+curvature of the surface -- per reference canopy class x slope class,
+blended over ~25 m, or one sigma for the site. NULL (default) leaves the
+DTMs as they are. \code{matchFit} "CURVATURE" (default) or "ROUGHNESS" (equal
+cell-scale roughness) sets how sigma is fitted, \code{matchMaxSigma} (m,
+default 1.5) the cap; \code{outSigma} writes the signed sigma (m; > 0 smooths
+the reference).}
 
 \item{shift}{SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 (optional).}

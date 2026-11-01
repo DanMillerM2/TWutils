@@ -1713,6 +1713,14 @@ accum_input <- function(dem,
 #' @param outWaterMask OUTPUT WATER MASK RASTER (optional): why each cell was
 #'   left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
 #'   coverage).
+#' @param matchSmoothness MATCH SMOOTHNESS: "LOCAL" or "GLOBAL" smooths one DTM
+#'   (Gaussian) after the global fit so dz no longer depends on the local
+#'   curvature of the surface -- per reference canopy class x slope class,
+#'   blended over ~25 m, or one sigma for the site. NULL (default) leaves the
+#'   DTMs as they are. `matchFit` "CURVATURE" (default) or "ROUGHNESS" (equal
+#'   cell-scale roughness) sets how sigma is fitted, `matchMaxSigma` (m,
+#'   default 1.5) the cap; `outSigma` writes the signed sigma (m; > 0 smooths
+#'   the reference).
 #' @param shift SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 #'   (optional).
 #' @param tileFit TILES FIT: "SEPARATE" (default) or "JOINT" (one bilinear
@@ -1795,6 +1803,10 @@ align_input <- function(refDTM,
                         coverageMin = NULL,
                         coverageBlock = NULL,
                         outWaterMask = NOFILE,
+                        matchSmoothness = NULL,
+                        matchFit = NULL,
+                        matchMaxSigma = NULL,
+                        outSigma = NOFILE,
                         shift = NULL,
                         tileFit = NULL,
                         tileSelect = NULL,
@@ -1826,6 +1838,13 @@ align_input <- function(refDTM,
   tileSelect  <- check_choice(tileSelect, c("NONE", "REPORT", "CV", "AUTO", "AUTO REPORT"),
                               "tileSelect")
   prior       <- check_choice(prior, c("NEIGHBOURS", "NEIGHBORS", "GLOBAL"), "prior")
+  matchSmoothness <- check_choice(matchSmoothness, c("LOCAL", "GLOBAL"), "matchSmoothness")
+  matchFit <- check_choice(matchFit, c("CURVATURE", "ROUGHNESS"), "matchFit")
+  if (is.null(matchSmoothness) && (!is.null(matchFit) || !is.null(matchMaxSigma) ||
+                                   !is_missing_path(outSigma))) {
+    stop("align_input(): matchFit, matchMaxSigma and outSigma need matchSmoothness.",
+         call. = FALSE)
+  }
 
   # --- Combinations Align would reject ------------------------------------
   auto_tiles <- !is.null(tileSelect) && startsWith(tileSelect, "AUTO")
@@ -1928,6 +1947,12 @@ align_input <- function(refDTM,
     writer$keyword("COVERAGE", MINIMUM = coverageMin, BLOCK = coverageBlock)
   }
   writer$optional("OUTPUT WATER MASK RASTER", normalize_raster_path(outWaterMask))
+  # Smoothness matching before differencing (Align 1.1.0+)
+  if (!is.null(matchSmoothness)) {
+    writer$keyword("MATCH SMOOTHNESS", MODE = matchSmoothness, FIT = matchFit,
+                   `MAX SIGMA` = matchMaxSigma,
+                   OUTPUT = if (!is_missing_path(outSigma)) normalize_raster_path(outSigma))
+  }
   if (!is.null(shift)) writer$keyword("SHIFT IT", DX = shift[1], DY = shift[2], DZ = shift[3])
 
   # --- Solution parameters ------------------------------------------------
