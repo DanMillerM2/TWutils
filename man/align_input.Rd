@@ -74,6 +74,9 @@ align_input(
   outCorDif = NOFILE,
   localOffsetWindow = NULL,
   localOffsetMinPoints = NULL,
+  exceedanceTrim = NULL,
+  exceedanceTrimZ = NULL,
+  exceedanceTrimFraction = NULL,
   outDX = NOFILE,
   outDY = NOFILE,
   outDZ = NOFILE
@@ -247,6 +250,12 @@ the modelled canopy bias (needs both DSMs to differ from the difference).}
 
 \item{localOffsetWindow, localOffsetMinPoints}{LOCAL OFFSET WINDOW (m) and
 MIN POINTS (needs \code{densityLod}; not recommended as a default).}
+
+\item{exceedanceTrim, exceedanceTrimZ, exceedanceTrimFraction}{EXCEEDANCE TRIM
+(needs \code{outExceed}): window (m) over which stable cells beyond +-\code{exceedanceTrimZ}
+(standardized residual, default 3) that fill at least \code{exceedanceTrimFraction}
+(default 0.5) of the window on the same side -- coherent change rather than
+noise -- are left out of the exceedance calibration. NULL (default) keeps them.}
 
 \item{outDX, outDY, outDZ}{OUTPUT DX/DY/DZ RASTER: the accumulated shifts
 applied to the aligned DTM (each optional).}

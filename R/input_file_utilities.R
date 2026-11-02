@@ -1766,6 +1766,11 @@ accum_input <- function(dem,
 #'   the modelled canopy bias (needs both DSMs to differ from the difference).
 #' @param localOffsetWindow,localOffsetMinPoints LOCAL OFFSET WINDOW (m) and
 #'   MIN POINTS (needs `densityLod`; not recommended as a default).
+#' @param exceedanceTrim,exceedanceTrimZ,exceedanceTrimFraction EXCEEDANCE TRIM
+#'   (needs `outExceed`): window (m) over which stable cells beyond +-`exceedanceTrimZ`
+#'   (standardized residual, default 3) that fill at least `exceedanceTrimFraction`
+#'   (default 0.5) of the window on the same side -- coherent change rather than
+#'   noise -- are left out of the exceedance calibration. NULL (default) keeps them.
 #' @param outDX,outDY,outDZ OUTPUT DX/DY/DZ RASTER: the accumulated shifts
 #'   applied to the aligned DTM (each optional).
 #'
@@ -1841,6 +1846,9 @@ align_input <- function(refDTM,
                         outCorDif = NOFILE,
                         localOffsetWindow = NULL,
                         localOffsetMinPoints = NULL,
+                        exceedanceTrim = NULL,
+                        exceedanceTrimZ = NULL,
+                        exceedanceTrimFraction = NULL,
                         outDX = NOFILE,
                         outDY = NOFILE,
                         outDZ = NOFILE) {
@@ -1887,6 +1895,12 @@ align_input <- function(refDTM,
                    outCenDif = outCenDif, outExceed = outExceed)
   lod_given <- names(lod_outputs)[!vapply(lod_outputs, is_missing_path, logical(1))]
   needs_lod <- c(lod_given, if (!is.null(localOffsetWindow)) "localOffsetWindow")
+  if (is.null(exceedanceTrim) && (!is.null(exceedanceTrimZ) || !is.null(exceedanceTrimFraction))) {
+    stop("align_input(): exceedanceTrimZ and exceedanceTrimFraction need exceedanceTrim.", call. = FALSE)
+  }
+  if (!is.null(exceedanceTrim) && is_missing_path(outExceed)) {
+    stop("align_input(): exceedanceTrim needs outExceed.", call. = FALSE)
+  }
   if (!isTRUE(densityLod) && length(needs_lod) > 0) {
     stop("align_input(): ", paste(needs_lod, collapse = ", "),
          if (length(needs_lod) > 1) " need" else " needs",
@@ -2021,6 +2035,10 @@ align_input <- function(refDTM,
     if (!is.null(localOffsetWindow)) {
       writer$keyword("LOCAL OFFSET", WINDOW = localOffsetWindow,
                      `MIN POINTS` = localOffsetMinPoints)
+    }
+    if (!is.null(exceedanceTrim)) {
+      writer$keyword("EXCEEDANCE TRIM", WINDOW = exceedanceTrim, Z = exceedanceTrimZ,
+                     FRACTION = exceedanceTrimFraction)
     }
   }
 
