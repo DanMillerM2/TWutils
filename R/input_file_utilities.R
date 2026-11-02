@@ -1712,7 +1712,25 @@ accum_input <- function(dem,
 #'   `coverageMin`/`coverageBlock` change it.
 #' @param outWaterMask OUTPUT WATER MASK RASTER (optional): why each cell was
 #'   left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
-#'   coverage).
+#'   coverage, 5 suspect ground).
+#' @param suspectGround SUSPECT GROUND (Align 1.1.0+): "REFERENCE", "ALIGN" or
+#'   "BOTH" replaces bumps in that DTM that the other lacks -- vegetation or
+#'   other returns classified as ground, which read as loss (reference) or gain
+#'   (align). A cell is suspect where the DTM stands `suspectHeight` m (default
+#'   0.3) above the median of its `suspectWindow` (m, default 5) and that much
+#'   more than the other DTM does (ridges, high in both, are kept), where the
+#'   other DTM isn't depressed (scars are kept), under at
+#'   least `suspectCanopy` m of canopy (default 2); grown over neighbours that
+#'   pass at half the height, up to `suspectBuffer` m (default 2). The bumped
+#'   DTM is replaced there by the local median. NULL (default) keeps everything.
+#' @param matchSmoothness MATCH SMOOTHNESS: "LOCAL" or "GLOBAL" smooths one DTM
+#'   (Gaussian) after the global fit so dz no longer depends on the local
+#'   curvature of the surface -- per reference canopy class x slope class,
+#'   blended over ~25 m, or one sigma for the site. NULL (default) leaves the
+#'   DTMs as they are. `matchFit` "CURVATURE" (default) or "ROUGHNESS" (equal
+#'   cell-scale roughness) sets how sigma is fitted, `matchMaxSigma` (m,
+#'   default 1.5) the cap; `outSigma` writes the signed sigma (m; > 0 smooths
+#'   the reference).
 #' @param shift SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 #'   (optional).
 #' @param tileFit TILES FIT: "SEPARATE" (default) or "JOINT" (one bilinear
@@ -1748,6 +1766,11 @@ accum_input <- function(dem,
 #'   the modelled canopy bias (needs both DSMs to differ from the difference).
 #' @param localOffsetWindow,localOffsetMinPoints LOCAL OFFSET WINDOW (m) and
 #'   MIN POINTS (needs `densityLod`; not recommended as a default).
+#' @param exceedanceTrim,exceedanceTrimZ,exceedanceTrimFraction EXCEEDANCE TRIM
+#'   (needs `outExceed`): window (m) over which stable cells beyond +-`exceedanceTrimZ`
+#'   (standardized residual, default 3) that fill at least `exceedanceTrimFraction`
+#'   (default 0.5) of the window on the same side -- coherent change rather than
+#'   noise -- are left out of the exceedance calibration. NULL (default) keeps them.
 #' @param outDX,outDY,outDZ OUTPUT DX/DY/DZ RASTER: the accumulated shifts
 #'   applied to the aligned DTM (each optional).
 #'
@@ -1795,6 +1818,15 @@ align_input <- function(refDTM,
                         coverageMin = NULL,
                         coverageBlock = NULL,
                         outWaterMask = NOFILE,
+                        suspectGround = NULL,
+                        suspectHeight = NULL,
+                        suspectWindow = NULL,
+                        suspectCanopy = NULL,
+                        suspectBuffer = NULL,
+                        matchSmoothness = NULL,
+                        matchFit = NULL,
+                        matchMaxSigma = NULL,
+                        outSigma = NOFILE,
                         shift = NULL,
                         tileFit = NULL,
                         tileSelect = NULL,
@@ -1814,6 +1846,9 @@ align_input <- function(refDTM,
                         outCorDif = NOFILE,
                         localOffsetWindow = NULL,
                         localOffsetMinPoints = NULL,
+                        exceedanceTrim = NULL,
+                        exceedanceTrimZ = NULL,
+                        exceedanceTrimFraction = NULL,
                         outDX = NOFILE,
                         outDY = NOFILE,
                         outDZ = NOFILE) {
@@ -1826,6 +1861,19 @@ align_input <- function(refDTM,
   tileSelect  <- check_choice(tileSelect, c("NONE", "REPORT", "CV", "AUTO", "AUTO REPORT"),
                               "tileSelect")
   prior       <- check_choice(prior, c("NEIGHBOURS", "NEIGHBORS", "GLOBAL"), "prior")
+  matchSmoothness <- check_choice(matchSmoothness, c("LOCAL", "GLOBAL"), "matchSmoothness")
+  matchFit <- check_choice(matchFit, c("CURVATURE", "ROUGHNESS"), "matchFit")
+  suspectGround <- check_choice(suspectGround, c("REFERENCE", "ALIGN", "BOTH"), "suspectGround")
+  if (is.null(suspectGround) && (!is.null(suspectHeight) || !is.null(suspectWindow) ||
+                                 !is.null(suspectCanopy) || !is.null(suspectBuffer))) {
+    stop("align_input(): suspectHeight, suspectWindow, suspectCanopy and suspectBuffer need suspectGround.",
+         call. = FALSE)
+  }
+  if (is.null(matchSmoothness) && (!is.null(matchFit) || !is.null(matchMaxSigma) ||
+                                   !is_missing_path(outSigma))) {
+    stop("align_input(): matchFit, matchMaxSigma and outSigma need matchSmoothness.",
+         call. = FALSE)
+  }
 
   # --- Combinations Align would reject ------------------------------------
   auto_tiles <- !is.null(tileSelect) && startsWith(tileSelect, "AUTO")
@@ -1847,6 +1895,12 @@ align_input <- function(refDTM,
                    outCenDif = outCenDif, outExceed = outExceed)
   lod_given <- names(lod_outputs)[!vapply(lod_outputs, is_missing_path, logical(1))]
   needs_lod <- c(lod_given, if (!is.null(localOffsetWindow)) "localOffsetWindow")
+  if (is.null(exceedanceTrim) && (!is.null(exceedanceTrimZ) || !is.null(exceedanceTrimFraction))) {
+    stop("align_input(): exceedanceTrimZ and exceedanceTrimFraction need exceedanceTrim.", call. = FALSE)
+  }
+  if (!is.null(exceedanceTrim) && is_missing_path(outExceed)) {
+    stop("align_input(): exceedanceTrim needs outExceed.", call. = FALSE)
+  }
   if (!isTRUE(densityLod) && length(needs_lod) > 0) {
     stop("align_input(): ", paste(needs_lod, collapse = ", "),
          if (length(needs_lod) > 1) " need" else " needs",
@@ -1928,6 +1982,17 @@ align_input <- function(refDTM,
     writer$keyword("COVERAGE", MINIMUM = coverageMin, BLOCK = coverageBlock)
   }
   writer$optional("OUTPUT WATER MASK RASTER", normalize_raster_path(outWaterMask))
+  # Bumps in one DTM only, left out after the global fit (Align 1.1.0+)
+  if (!is.null(suspectGround)) {
+    writer$keyword("SUSPECT GROUND", "YES", SURVEY = suspectGround, HEIGHT = suspectHeight,
+                   WINDOW = suspectWindow, CANOPY = suspectCanopy, BUFFER = suspectBuffer)
+  }
+  # Smoothness matching before differencing (Align 1.1.0+)
+  if (!is.null(matchSmoothness)) {
+    writer$keyword("MATCH SMOOTHNESS", MODE = matchSmoothness, FIT = matchFit,
+                   `MAX SIGMA` = matchMaxSigma,
+                   OUTPUT = if (!is_missing_path(outSigma)) normalize_raster_path(outSigma))
+  }
   if (!is.null(shift)) writer$keyword("SHIFT IT", DX = shift[1], DY = shift[2], DZ = shift[3])
 
   # --- Solution parameters ------------------------------------------------
@@ -1970,6 +2035,10 @@ align_input <- function(refDTM,
     if (!is.null(localOffsetWindow)) {
       writer$keyword("LOCAL OFFSET", WINDOW = localOffsetWindow,
                      `MIN POINTS` = localOffsetMinPoints)
+    }
+    if (!is.null(exceedanceTrim)) {
+      writer$keyword("EXCEEDANCE TRIM", WINDOW = exceedanceTrim, Z = exceedanceTrimZ,
+                     FRACTION = exceedanceTrimFraction)
     }
   }
 
@@ -2200,6 +2269,14 @@ huntLSinput <- function(DEM,
 #'   canopy height (DSM - DEM) in the reference and the aligned survey and its
 #'   change. `CanopyAlignDEM` is the align survey's original DEM (the one its
 #'   DSM matches), not Align's shifted output.
+#' @param AreaWindows,AreaThreshold,AreaMinFraction,OutAreaZ AREA SEEDS
+#'   (LShunter 1.3.0+; needs `Exceedance` and `NoiseCorr`): seeds also where
+#'   the evidence pooled over a square window is significant -- S becomes a
+#'   normal score z, and Z_A = sum z / its SD under Align's correlated noise.
+#'   `AreaWindows` are window widths (m, e.g. c(5, 10, 20)), `AreaThreshold`
+#'   the Z_A a seed needs (< 0, e.g. -4.5); `AreaMinFraction` the share of a
+#'   window's points that must be floodable (default 0.5); `OutAreaZ` writes
+#'   each point's most extreme Z_A.
 #'
 #' @return 0 on success.
 #' @export
@@ -2239,7 +2316,11 @@ LShunterInput <- function(Outlier = NOFILE,
                           CanopyRefDSM = NOFILE,
                           CanopyRefDEM = NOFILE,
                           CanopyAlignDSM = NOFILE,
-                          CanopyAlignDEM = NOFILE) {
+                          CanopyAlignDEM = NOFILE,
+                          AreaWindows = NULL,
+                          AreaThreshold = NULL,
+                          AreaMinFraction = NULL,
+                          OutAreaZ = NOFILE) {
 
   # The patch table and the noise model need these together (LShunter stops otherwise).
   NoiseCover <- check_choice(NoiseCover, c("ALL", "OPEN", "VEGETATED"), "NoiseCover")
@@ -2277,6 +2358,17 @@ LShunterInput <- function(Outlier = NOFILE,
   if (canopy && is_missing_path(OutTable)) {
     stop("LShunterInput(): canopy height is reported in the patch table: it needs OutTable.",
          call. = FALSE)
+  }
+
+  area_seeds <- !is.null(AreaWindows) || !is.null(AreaThreshold)
+  if (area_seeds && (is.null(AreaWindows) || is.null(AreaThreshold) || AreaThreshold >= 0)) {
+    stop("LShunterInput(): area seeds need AreaWindows and a negative AreaThreshold.", call. = FALSE)
+  }
+  if (area_seeds && (is_missing_path(Exceedance) || is_missing_path(NoiseCorr))) {
+    stop("LShunterInput(): area seeds need Exceedance and NoiseCorr (Align's correlogram).", call. = FALSE)
+  }
+  if (!area_seeds && (!is.null(AreaMinFraction) || !is_missing_path(OutAreaZ))) {
+    stop("LShunterInput(): AreaMinFraction and OutAreaZ need AreaWindows and AreaThreshold.", call. = FALSE)
   }
 
   # Exactly one elevation-change raster: Align's outlier or exceedance raster.
@@ -2380,6 +2472,12 @@ LShunterInput <- function(Outlier = NOFILE,
                    SEED = NullSeed)
   }
   if (isTRUE(SignFlip)) writer$keyword("SIGN FLIP CONTROL", "YES")
+  # Seeds from evidence pooled over an area (the widths are space-separated)
+  if (area_seeds) {
+    writer$keyword("AREA SEEDS", WINDOWS = paste(vapply(AreaWindows, format_number, character(1)), collapse = " "),
+                   THRESHOLD = AreaThreshold, `MIN FRACTION` = AreaMinFraction,
+                   OUTPUT = if (!is_missing_path(OutAreaZ)) normalize_raster_path(OutAreaZ))
+  }
 
   # --- Remaining parameter and outputs ------------------------------------
   writer$keyword("MINIMUM SIZE", MinSize)

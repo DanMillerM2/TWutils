@@ -46,6 +46,15 @@ align_input(
   coverageMin = NULL,
   coverageBlock = NULL,
   outWaterMask = NOFILE,
+  suspectGround = NULL,
+  suspectHeight = NULL,
+  suspectWindow = NULL,
+  suspectCanopy = NULL,
+  suspectBuffer = NULL,
+  matchSmoothness = NULL,
+  matchFit = NULL,
+  matchMaxSigma = NULL,
+  outSigma = NOFILE,
   shift = NULL,
   tileFit = NULL,
   tileSelect = NULL,
@@ -65,6 +74,9 @@ align_input(
   outCorDif = NOFILE,
   localOffsetWindow = NULL,
   localOffsetMinPoints = NULL,
+  exceedanceTrim = NULL,
+  exceedanceTrimZ = NULL,
+  exceedanceTrimFraction = NULL,
   outDX = NOFILE,
   outDY = NOFILE,
   outDZ = NOFILE
@@ -167,7 +179,27 @@ both given; \code{coverage = FALSE} turns it off (COVERAGE: NO), and
 
 \item{outWaterMask}{OUTPUT WATER MASK RASTER (optional): why each cell was
 left out (0 used, 1 water mask, 2 water points, 3 flat water, 4 no
-coverage).}
+coverage, 5 suspect ground).}
+
+\item{suspectGround}{SUSPECT GROUND (Align 1.1.0+): "REFERENCE", "ALIGN" or
+"BOTH" replaces bumps in that DTM that the other lacks -- vegetation or
+other returns classified as ground, which read as loss (reference) or gain
+(align). A cell is suspect where the DTM stands \code{suspectHeight} m (default
+0.3) above the median of its \code{suspectWindow} (m, default 5) and that much
+more than the other DTM does (ridges, high in both, are kept), where the
+other DTM isn't depressed (scars are kept), under at
+least \code{suspectCanopy} m of canopy (default 2); grown over neighbours that
+pass at half the height, up to \code{suspectBuffer} m (default 2). The bumped
+DTM is replaced there by the local median. NULL (default) keeps everything.}
+
+\item{matchSmoothness}{MATCH SMOOTHNESS: "LOCAL" or "GLOBAL" smooths one DTM
+(Gaussian) after the global fit so dz no longer depends on the local
+curvature of the surface -- per reference canopy class x slope class,
+blended over ~25 m, or one sigma for the site. NULL (default) leaves the
+DTMs as they are. \code{matchFit} "CURVATURE" (default) or "ROUGHNESS" (equal
+cell-scale roughness) sets how sigma is fitted, \code{matchMaxSigma} (m,
+default 1.5) the cap; \code{outSigma} writes the signed sigma (m; > 0 smooths
+the reference).}
 
 \item{shift}{SHIFT IT: a fixed offset c(dx, dy, dz) in meters applied first
 (optional).}
@@ -218,6 +250,12 @@ the modelled canopy bias (needs both DSMs to differ from the difference).}
 
 \item{localOffsetWindow, localOffsetMinPoints}{LOCAL OFFSET WINDOW (m) and
 MIN POINTS (needs \code{densityLod}; not recommended as a default).}
+
+\item{exceedanceTrim, exceedanceTrimZ, exceedanceTrimFraction}{EXCEEDANCE TRIM
+(needs \code{outExceed}): window (m) over which stable cells beyond +-\code{exceedanceTrimZ}
+(standardized residual, default 3) that fill at least \code{exceedanceTrimFraction}
+(default 0.5) of the window on the same side -- coherent change rather than
+noise -- are left out of the exceedance calibration. NULL (default) keeps them.}
 
 \item{outDX, outDY, outDZ}{OUTPUT DX/DY/DZ RASTER: the accumulated shifts
 applied to the aligned DTM (each optional).}

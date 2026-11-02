@@ -41,7 +41,11 @@ LShunterInput(
   CanopyRefDSM = NOFILE,
   CanopyRefDEM = NOFILE,
   CanopyAlignDSM = NOFILE,
-  CanopyAlignDEM = NOFILE
+  CanopyAlignDEM = NOFILE,
+  AreaWindows = NULL,
+  AreaThreshold = NULL,
+  AreaMinFraction = NULL,
+  OutAreaZ = NOFILE
 )
 }
 \arguments{
@@ -131,6 +135,15 @@ each survey's DSM and DEM, so the patch table gives each patch's mean
 canopy height (DSM - DEM) in the reference and the aligned survey and its
 change. \code{CanopyAlignDEM} is the align survey's original DEM (the one its
 DSM matches), not Align's shifted output.}
+
+\item{AreaWindows, AreaThreshold, AreaMinFraction, OutAreaZ}{AREA SEEDS
+(LShunter 1.3.0+; needs \code{Exceedance} and \code{NoiseCorr}): seeds also where
+the evidence pooled over a square window is significant -- S becomes a
+normal score z, and Z_A = sum z / its SD under Align's correlated noise.
+\code{AreaWindows} are window widths (m, e.g. c(5, 10, 20)), \code{AreaThreshold}
+the Z_A a seed needs (< 0, e.g. -4.5); \code{AreaMinFraction} the share of a
+window's points that must be floodable (default 0.5); \code{OutAreaZ} writes
+each point's most extreme Z_A.}
 }
 \value{
 0 on success.
