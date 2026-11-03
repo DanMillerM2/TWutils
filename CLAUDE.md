@@ -145,7 +145,8 @@ independently and there is no compiler or CI linking them.
   `OUTPUT PATCH RASTER`, `OUTPUT GRADIENT RASTER`, `OUTPUT TABLE`, `SCRATCH DIRECTORY`) matches a
   `CASE` in `HuntLS.f90`'s keyword parser exactly.
 - `LShunter()` → `LandslideUtilities/LShunter.f90` (`PROGRAM LShunter`, built by
-  `LandslideUtilities\Projects\LShunter`; LShunter 1.1, branch `LShunter_update` there) —
+  `LandslideUtilities\Projects\LShunter`; LShunter 1.1-1.3.0, on LandslideUtilities `master`
+  since tag `lshunter-1.3.0`) —
   `LShunterInput()`'s keywords (`EXCEEDANCE RASTER` or `OUTLIER` w/ `THRESHOLD1`/`THRESHOLD2`,
   `GRADIENT` w/ `FILE`/`MIN1`/`MIN2`/`UNITS`, `FLOW ACCUMULATION` w/ `MAX1`/`MAX2`,
   `ROAD SHAPEFILE` w/ `BUFFER`, `MINIMUM SIZE`, `OUTPUT PATCH RASTER`, `SCRATCH DIRECTORY`) all
