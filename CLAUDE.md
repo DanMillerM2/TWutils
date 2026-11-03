@@ -166,6 +166,14 @@ independently and there is no compiler or CI linking them.
   all three; `NullRealizations` needs `NoiseCorr`; seed density needs both rasters and the minimum.
   Most of these inputs are Align outputs (see `align()` below). Tested end to end through
   `TWutils::align()` → `LShunter()` → `LSstats()` on the Site2 regression area.
+  **LShunter 1.4.0 (LandslideUtilities branch `deposits`):** `DepFlowDir`/`DepRefDEM` write
+  `DEPOSITS: FLOW DIRECTION = ..., REFERENCE DEM = ...` with optional `THRESHOLD1`/`THRESHOLD2`
+  (S > 0, gain), `MIN1`/`MIN2`, `MAX1`/`MAX2`, `MINIMUM SIZE`, `MAX DISTANCE`, `SPREAD`, `SCOUR
+  WINDOW`, `SCOUR FRACTION`, `OUTPUT`, `UNLINKED`, `CORRIDOR`, `PATHS` (`Dep*`/`Out*` arguments;
+  NULL ones are left out, so LShunter's defaults apply). Deposits need `Exceedance` and `OutTable`
+  (their tables are named from it: `<stem>_deposits.csv`, `_unlinked.csv`, `_balance.csv`).
+  `DepFlowDir` is bldgrds' D-infinity `ang_` raster of the reference DTM (radians clockwise from
+  north), on the exceedance grid: `bldgrds_nochannels(out_ang = )` makes it.
 - `LS_poly()` → `LandslideUtilities/initPoly.f90` (`PROGRAM initPoly`, built by
   `LandslideUtilities\Projects\LS_poly` — note the project/wrapper name `LS_poly` doesn't match the
   file or `PROGRAM` name `initPoly`) — `LS_poly_input()`'s keywords (`DEM`,
@@ -240,6 +248,13 @@ independently and there is no compiler or CI linking them.
   if a caller pairs `node_shapefile` with an explicitly empty `attribute_list` rather than silently
   writing a broken file — none of that changed with this rewrite, only the actual keyword/attribute
   vocabulary matching it.
+- `bldgrds_nochannels(out_ang = )`/`bldgrds_nochannels_input(out_ang = )` name the D-infinity
+  flow direction raster (otherwise `ang_<DEM ID>` beside the DEM). bldgrds reads that name from
+  `NO CHANNELS: ANG = <file>`, but `..\modules\DEM_module.f90` parses the same line's argument as
+  YES/NO, so a path turns DEM_Module's own no-channels flag off and the run stops, asking for
+  channel-initiation thresholds ("Need to specifiy high and low gradient minimum flow length").
+  The input writer adds a bare `NO NEW CHANNELS:` line after it, which turns DEM_Module's flag
+  back on and leaves bldgrds' file name alone (verified on Site1's reference DTM, 2026-11-02).
 - `bldgrds_enforce()`/`bldgrds_enforce_input()` are a third bldgrds scenario, alongside
   `bldgrds()`/`bldgrds_input()` (initiate new channels from thresholds) and
   `bldgrds_nochannels()`/`bldgrds_nochannels_input()` (flow accumulation only, no channel

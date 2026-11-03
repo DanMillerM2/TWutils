@@ -47,7 +47,9 @@ optional patch table and controls: \code{CenDif}, \code{IQR}, \code{NoiseCorr},
 \code{CanopyRefDSM}/\code{CanopyRefDEM}/\code{CanopyAlignDSM}/\code{CanopyAlignDEM} (each
 patch's mean canopy height in both surveys, LShunter 1.2.0+), and
 \code{AreaWindows}/\code{AreaThreshold}/\code{AreaMinFraction}/\code{OutAreaZ} (AREA SEEDS,
-LShunter 1.3.0+).
+LShunter 1.3.0+), and \code{DepFlowDir}/\code{DepRefDEM} with the other \verb{Dep*} and
+\code{OutDeposits}/\code{OutUnlinked}/\code{OutCorridor}/\code{OutPaths} arguments (DEPOSITS,
+LShunter 1.4.0+: gain patches downslope of the scars, linked to them).
 Align writes most of these inputs: see \code{\link[=align_input]{align_input()}}.}
 
 \item{Executable_dir}{Character: directory holding LShunter.exe.}

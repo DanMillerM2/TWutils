@@ -45,7 +45,24 @@ LShunterInput(
   AreaWindows = NULL,
   AreaThreshold = NULL,
   AreaMinFraction = NULL,
-  OutAreaZ = NOFILE
+  OutAreaZ = NOFILE,
+  DepFlowDir = NOFILE,
+  DepRefDEM = NOFILE,
+  DepThreshold1 = NULL,
+  DepThreshold2 = NULL,
+  DepMin1 = NULL,
+  DepMin2 = NULL,
+  DepMax1 = NULL,
+  DepMax2 = NULL,
+  DepMinSize = NULL,
+  DepMaxDistance = NULL,
+  DepSpread = NULL,
+  DepScourWindow = NULL,
+  DepScourFraction = NULL,
+  OutDeposits = NOFILE,
+  OutUnlinked = NOFILE,
+  OutCorridor = NOFILE,
+  OutPaths = NOFILE
 )
 }
 \arguments{
@@ -144,6 +161,43 @@ normal score z, and Z_A = sum z / its SD under Align's correlated noise.
 the Z_A a seed needs (< 0, e.g. -4.5); \code{AreaMinFraction} the share of a
 window's points that must be floodable (default 0.5); \code{OutAreaZ} writes
 each point's most extreme Z_A.}
+
+\item{DepFlowDir, DepRefDEM}{DEPOSITS (LShunter 1.4.0+; optional, both
+together; needs \code{Exceedance} and \code{OutTable}): find patches of elevation
+gain downslope of the scars and link each to its scar. \code{DepFlowDir} is
+bldgrds' D-infinity flow direction raster (\code{ang_}) of the reference DTM,
+\code{DepRefDEM} the reference DTM; both on the exceedance raster's grid.
+Outputs: \verb{<OutTable stem>_deposits.csv}, \verb{_unlinked.csv} and
+\verb{_balance.csv}, and the rasters \code{OutDeposits} and \code{OutUnlinked}.}
+
+\item{DepThreshold1, DepThreshold2}{S for deposit seeds and growth (> 0, for
+gain; LShunter's defaults 4 and 2).}
+
+\item{DepMin1, DepMin2}{Minimum gradient (tan) for deposit seeds and growth
+(default: none).}
+
+\item{DepMax1, DepMax2}{Flow accumulation deposit seeds must stay below (the
+channels; default \code{maxAccum1}) and deposits may grow into (default: no
+limit, so deposits continue into channels and onto the floodplain where
+they are contiguous with gain outside them).}
+
+\item{DepMinSize}{Minimum deposit size in square meters (default \code{MinSize}).}
+
+\item{DepMaxDistance}{Distance (m) along a runout path, beyond the last
+coherent loss (the scar, or scour along a debris-flow track), where the
+path ends (default 500).}
+
+\item{DepSpread}{Corridor half-width (m) around a runout path (default 100).}
+
+\item{DepScourWindow, DepScourFraction}{Coherent loss along a path: at least
+\code{DepScourFraction} (default 0.5) of a \code{DepScourWindow}-wide (m, default 5)
+window at S <= threshold2.}
+
+\item{OutDeposits, OutUnlinked}{Deposit and unlinked gain-patch rasters
+(default \verb{<OutPatch>_deposits} and \verb{<OutPatch>_unlinked}).}
+
+\item{OutCorridor, OutPaths}{Optional diagnostic rasters: each corridor
+point's scar, and each path point's distance beyond the last coherent loss.}
 }
 \value{
 0 on success.

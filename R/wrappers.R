@@ -501,6 +501,9 @@ contributing_area <- function(input_file = NOFILE,
 #'   measured.
 #' @param scratch_dir Character: scratch directory.
 #' @param executable_dir Character: directory holding bldgrds.exe.
+#' @param out_ang Character: output D-infinity flow direction raster (.flt,
+#'   mode 2; optional -- bldgrds otherwise writes `ang_<DEM ID>` beside the
+#'   DEM). LShunter's DEPOSITS traces runout paths on it.
 #'
 #' @return A \code{SpatRaster} of total contributing area.
 #' @export
@@ -511,7 +514,8 @@ bldgrds_nochannels <- function(input_file = NOFILE,
                                plan_length = 0,
                                grad_length = 0,
                                scratch_dir = NOFILE,
-                               executable_dir = NULL) {
+                               executable_dir = NULL,
+                               out_ang = NOFILE) {
 
   run_bldgrds <- TRUE
 
@@ -548,7 +552,8 @@ bldgrds_nochannels <- function(input_file = NOFILE,
     check$report()
 
     input_file <- bldgrds_nochannels_input(dem, aspect_length, plan_length,
-                                           grad_length, raster, scratch_dir)
+                                           grad_length, raster, scratch_dir,
+                                           out_ang = out_ang)
     raster <- add_extension_if_missing(raster, "flt")
   }
 
@@ -1234,7 +1239,9 @@ huntLS <- function(DEM = NOFILE,
 #'   `CanopyRefDSM`/`CanopyRefDEM`/`CanopyAlignDSM`/`CanopyAlignDEM` (each
 #'   patch's mean canopy height in both surveys, LShunter 1.2.0+), and
 #'   `AreaWindows`/`AreaThreshold`/`AreaMinFraction`/`OutAreaZ` (AREA SEEDS,
-#'   LShunter 1.3.0+).
+#'   LShunter 1.3.0+), and `DepFlowDir`/`DepRefDEM` with the other `Dep*` and
+#'   `OutDeposits`/`OutUnlinked`/`OutCorridor`/`OutPaths` arguments (DEPOSITS,
+#'   LShunter 1.4.0+: gain patches downslope of the scars, linked to them).
 #'   Align writes most of these inputs: see [align_input()].
 #' @param Executable_dir Character: directory holding LShunter.exe.
 #'

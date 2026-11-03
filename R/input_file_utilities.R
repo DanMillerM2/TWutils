@@ -2277,6 +2277,33 @@ huntLSinput <- function(DEM,
 #'   the Z_A a seed needs (< 0, e.g. -4.5); `AreaMinFraction` the share of a
 #'   window's points that must be floodable (default 0.5); `OutAreaZ` writes
 #'   each point's most extreme Z_A.
+#' @param DepFlowDir,DepRefDEM DEPOSITS (LShunter 1.4.0+; optional, both
+#'   together; needs `Exceedance` and `OutTable`): find patches of elevation
+#'   gain downslope of the scars and link each to its scar. `DepFlowDir` is
+#'   bldgrds' D-infinity flow direction raster (`ang_`) of the reference DTM,
+#'   `DepRefDEM` the reference DTM; both on the exceedance raster's grid.
+#'   Outputs: `<OutTable stem>_deposits.csv`, `_unlinked.csv` and
+#'   `_balance.csv`, and the rasters `OutDeposits` and `OutUnlinked`.
+#' @param DepThreshold1,DepThreshold2 S for deposit seeds and growth (> 0, for
+#'   gain; LShunter's defaults 4 and 2).
+#' @param DepMin1,DepMin2 Minimum gradient (tan) for deposit seeds and growth
+#'   (default: none).
+#' @param DepMax1,DepMax2 Flow accumulation deposit seeds must stay below (the
+#'   channels; default `maxAccum1`) and deposits may grow into (default: no
+#'   limit, so deposits continue into channels and onto the floodplain where
+#'   they are contiguous with gain outside them).
+#' @param DepMinSize Minimum deposit size in square meters (default `MinSize`).
+#' @param DepMaxDistance Distance (m) along a runout path, beyond the last
+#'   coherent loss (the scar, or scour along a debris-flow track), where the
+#'   path ends (default 500).
+#' @param DepSpread Corridor half-width (m) around a runout path (default 100).
+#' @param DepScourWindow,DepScourFraction Coherent loss along a path: at least
+#'   `DepScourFraction` (default 0.5) of a `DepScourWindow`-wide (m, default 5)
+#'   window at S <= threshold2.
+#' @param OutDeposits,OutUnlinked Deposit and unlinked gain-patch rasters
+#'   (default `<OutPatch>_deposits` and `<OutPatch>_unlinked`).
+#' @param OutCorridor,OutPaths Optional diagnostic rasters: each corridor
+#'   point's scar, and each path point's distance beyond the last coherent loss.
 #'
 #' @return 0 on success.
 #' @export
@@ -2320,7 +2347,24 @@ LShunterInput <- function(Outlier = NOFILE,
                           AreaWindows = NULL,
                           AreaThreshold = NULL,
                           AreaMinFraction = NULL,
-                          OutAreaZ = NOFILE) {
+                          OutAreaZ = NOFILE,
+                          DepFlowDir = NOFILE,
+                          DepRefDEM = NOFILE,
+                          DepThreshold1 = NULL,
+                          DepThreshold2 = NULL,
+                          DepMin1 = NULL,
+                          DepMin2 = NULL,
+                          DepMax1 = NULL,
+                          DepMax2 = NULL,
+                          DepMinSize = NULL,
+                          DepMaxDistance = NULL,
+                          DepSpread = NULL,
+                          DepScourWindow = NULL,
+                          DepScourFraction = NULL,
+                          OutDeposits = NOFILE,
+                          OutUnlinked = NOFILE,
+                          OutCorridor = NOFILE,
+                          OutPaths = NOFILE) {
 
   # The patch table and the noise model need these together (LShunter stops otherwise).
   NoiseCover <- check_choice(NoiseCover, c("ALL", "OPEN", "VEGETATED"), "NoiseCover")
@@ -2369,6 +2413,28 @@ LShunterInput <- function(Outlier = NOFILE,
   }
   if (!area_seeds && (!is.null(AreaMinFraction) || !is_missing_path(OutAreaZ))) {
     stop("LShunterInput(): AreaMinFraction and OutAreaZ need AreaWindows and AreaThreshold.", call. = FALSE)
+  }
+
+  deposits <- !is_missing_path(DepFlowDir) || !is_missing_path(DepRefDEM)
+  if (deposits && (is_missing_path(DepFlowDir) || is_missing_path(DepRefDEM))) {
+    stop("LShunterInput(): deposits need DepFlowDir (bldgrds' ang_ raster of the reference DTM) ",
+         "and DepRefDEM (the reference DTM) together.", call. = FALSE)
+  }
+  if (deposits && (is_missing_path(Exceedance) || is_missing_path(OutTable))) {
+    stop("LShunterInput(): deposits need Exceedance and OutTable (the deposit, unlinked and ",
+         "balance tables are named from it).", call. = FALSE)
+  }
+  dep_options <- list(DepThreshold1, DepThreshold2, DepMin1, DepMin2, DepMax1, DepMax2, DepMinSize,
+                      DepMaxDistance, DepSpread, DepScourWindow, DepScourFraction)
+  dep_files <- list(OutDeposits, OutUnlinked, OutCorridor, OutPaths)
+  if (!deposits && (!all(vapply(dep_options, is.null, logical(1))) ||
+                    !all(vapply(dep_files, is_missing_path, logical(1))))) {
+    stop("LShunterInput(): deposit settings need DepFlowDir and DepRefDEM.", call. = FALSE)
+  }
+  if (deposits && ((!is.null(DepThreshold1) && DepThreshold1 <= 0) ||
+                   (!is.null(DepThreshold2) && DepThreshold2 <= 0))) {
+    stop("LShunterInput(): DepThreshold1 and DepThreshold2 are S for gain: give positive values.",
+         call. = FALSE)
   }
 
   # Exactly one elevation-change raster: Align's outlier or exceedance raster.
@@ -2477,6 +2543,20 @@ LShunterInput <- function(Outlier = NOFILE,
     writer$keyword("AREA SEEDS", WINDOWS = paste(vapply(AreaWindows, format_number, character(1)), collapse = " "),
                    THRESHOLD = AreaThreshold, `MIN FRACTION` = AreaMinFraction,
                    OUTPUT = if (!is_missing_path(OutAreaZ)) normalize_raster_path(OutAreaZ))
+  }
+  # Deposits: gain patches downslope of the scars, linked to them along runout paths traced on
+  # the reference DTM's flow directions
+  if (deposits) {
+    optional_raster <- function(f) if (!is_missing_path(f)) normalize_raster_path(f)
+    writer$keyword("DEPOSITS",
+                   `FLOW DIRECTION` = normalize_raster_path(DepFlowDir, must_exist = TRUE),
+                   `REFERENCE DEM` = normalize_raster_path(DepRefDEM, must_exist = TRUE),
+                   THRESHOLD1 = DepThreshold1, THRESHOLD2 = DepThreshold2,
+                   MIN1 = DepMin1, MIN2 = DepMin2, MAX1 = DepMax1, MAX2 = DepMax2,
+                   `MINIMUM SIZE` = DepMinSize, `MAX DISTANCE` = DepMaxDistance, SPREAD = DepSpread,
+                   `SCOUR WINDOW` = DepScourWindow, `SCOUR FRACTION` = DepScourFraction,
+                   OUTPUT = optional_raster(OutDeposits), UNLINKED = optional_raster(OutUnlinked),
+                   CORRIDOR = optional_raster(OutCorridor), PATHS = optional_raster(OutPaths))
   }
 
   # --- Remaining parameter and outputs ------------------------------------
@@ -3057,6 +3137,9 @@ distanceToRoad_input <- function(dem,
 #' @param out_raster Output binary floating point (.flt) raster.
 #' @param scratch_dir Scratch directory; the input file is written here.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
+#' @param out_ang Output D-infinity flow direction raster (.flt; radians
+#'   clockwise from north), optional. Without it bldgrds writes
+#'   `ang_<DEM ID>` in the DEM's folder.
 #'
 #' @return The input file path, invisibly.
 #' @export
@@ -3066,7 +3149,8 @@ bldgrds_nochannels_input <- function(dem,
                                      grad_length,
                                      out_raster,
                                      scratch_dir,
-                                     overwrite = TRUE) {
+                                     overwrite = TRUE,
+                                     out_ang = NOFILE) {
 
   writer <- input_writer("bldgrds_nochannels", scratch_dir,
                          "input_bldgrds_nochannels.txt", overwrite)
@@ -3080,7 +3164,16 @@ bldgrds_nochannels_input <- function(dem,
   writer$keyword("GRADIENT LENGTH SCALE", grad_length)
 
   # --- A bare flag keyword: no arguments, just the keyword and its colon --
-  writer$keyword("NO CHANNELS")
+  # With out_ang, bldgrds reads the flow direction file from NO CHANNELS (ANG = ...), but
+  # DEM_Module reads the same line's argument as YES/NO, so a path there turns its own
+  # no-channels flag off and it then asks for channel-initiation thresholds; the bare
+  # NO NEW CHANNELS line that follows turns it back on (and leaves bldgrds' file name alone).
+  if (!is_missing_path(out_ang)) {
+    writer$keyword("NO CHANNELS", ANG = normalize_raster_path(out_ang))
+    writer$keyword("NO NEW CHANNELS")
+  } else {
+    writer$keyword("NO CHANNELS")
+  }
 
   # --- Outputs ------------------------------------------------------------
   writer$keyword("OUTPUT FLOW ACCUMULATION RASTER",

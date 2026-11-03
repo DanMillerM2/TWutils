@@ -11,7 +11,8 @@ bldgrds_nochannels_input(
   grad_length,
   out_raster,
   scratch_dir,
-  overwrite = TRUE
+  overwrite = TRUE,
+  out_ang = NOFILE
 )
 }
 \arguments{
@@ -28,6 +29,10 @@ bldgrds_nochannels_input(
 \item{scratch_dir}{Scratch directory; the input file is written here.}
 
 \item{overwrite}{If TRUE, allow overwriting an existing input file.}
+
+\item{out_ang}{Output D-infinity flow direction raster (.flt; radians
+clockwise from north), optional. Without it bldgrds writes
+\verb{ang_<DEM ID>} in the DEM's folder.}
 }
 \value{
 The input file path, invisibly.

@@ -12,7 +12,8 @@ bldgrds_nochannels(
   plan_length = 0,
   grad_length = 0,
   scratch_dir = NOFILE,
-  executable_dir = NULL
+  executable_dir = NULL,
+  out_ang = NOFILE
 )
 }
 \arguments{
@@ -35,6 +36,10 @@ measured.}
 \item{scratch_dir}{Character: scratch directory.}
 
 \item{executable_dir}{Character: directory holding bldgrds.exe.}
+
+\item{out_ang}{Character: output D-infinity flow direction raster (.flt,
+mode 2; optional -- bldgrds otherwise writes \verb{ang_<DEM ID>} beside the
+DEM). LShunter's DEPOSITS traces runout paths on it.}
 }
 \value{
 A \code{SpatRaster} of total contributing area.
