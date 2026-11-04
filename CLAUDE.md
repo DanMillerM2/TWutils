@@ -166,7 +166,7 @@ independently and there is no compiler or CI linking them.
   all three; `NullRealizations` needs `NoiseCorr`; seed density needs both rasters and the minimum.
   Most of these inputs are Align outputs (see `align()` below). Tested end to end through
   `TWutils::align()` → `LShunter()` → `LSstats()` on the Site2 regression area.
-  **LShunter 1.4.0 (LandslideUtilities branch `deposits`):** `DepFlowDir`/`DepRefDEM` write
+  **LShunter 1.4.0 (LandslideUtilities master, tag `lshunter-1.4.0`):** `DepFlowDir`/`DepRefDEM` write
   `DEPOSITS: FLOW DIRECTION = ..., REFERENCE DEM = ...` with optional `THRESHOLD1`/`THRESHOLD2`
   (S > 0, gain), `MIN1`/`MIN2`, `MAX1`/`MAX2`, `MINIMUM SIZE`, `MAX DISTANCE`, `SPREAD`, `SCOUR
   WINDOW`, `SCOUR FRACTION`, `OUTPUT`, `UNLINKED`, `CORRIDOR`, `PATHS` (`Dep*`/`Out*` arguments;
