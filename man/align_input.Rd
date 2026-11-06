@@ -79,7 +79,9 @@ align_input(
   exceedanceTrimFraction = NULL,
   outDX = NOFILE,
   outDY = NOFILE,
-  outDZ = NOFILE
+  outDZ = NOFILE,
+  lodGain = FALSE,
+  lodCentre = FALSE
 )
 }
 \arguments{
@@ -239,8 +241,7 @@ ground-return density (DENSITY LOD: YES; needs \code{refGrnd} and
 \item{outDenOutlier}{OUTPUT DENSITY OUTLIER RASTER (optional).}
 
 \item{outLod}{OUTPUT LOD RASTER (optional): the loss limit; Align also
-writes \verb{<outLod>_gain}, \verb{_centre} and \verb{_iqr} (the IQR raster LShunter's
-patch table uses).}
+writes \verb{<outLod>_iqr} (the IQR raster LShunter's patch table uses).}
 
 \item{outCenDif}{OUTPUT CENTERED DIFFERENCE RASTER (optional): dz minus the
 expected dz, for patch depths and volumes.}
@@ -262,6 +263,11 @@ noise -- are left out of the exceedance calibration. NULL (default) keeps them.}
 
 \item{outDX, outDY, outDZ}{OUTPUT DX/DY/DZ RASTER: the accumulated shifts
 applied to the aligned DTM (each optional).}
+
+\item{lodGain, lodCentre}{TRUE to have Align 1.4.0+ also write
+\verb{<outLod>_gain} (the gain limit) and \verb{<outLod>_centre} (the expected dz)
+(OUTPUT LOD RASTER's GAIN = YES and CENTRE = YES). FALSE, the default,
+leaves them out; Align before 1.4.0 writes both regardless.}
 }
 \value{
 The input file path, invisibly.

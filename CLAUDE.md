@@ -339,7 +339,10 @@ independently and there is no compiler or CI linking them.
   (`check_choice()`), and combinations Align rejects (SELECT REPORT/CV without FIT JOINT, LoD outputs
   without `densityLod`, `densityLod` without both ground rasters) stop before it runs. `align()`
   passes them through `...`. `align_gradient_raster(refDTM, radius)` gives the path Align writes the
-  gradient to (`<refDTM>_grad<radius>m`), which LShunter requires. **Align 1.2.0** makes OUTPUT
+  gradient to (`<refDTM>_grad<radius>m`), which LShunter requires. **Align 1.4.0** writes
+  `<outLod>_gain` and `_centre` only on request (`lodGain`/`lodCentre`, OUTPUT LOD RASTER's
+  `GAIN = YES`/`CENTRE = YES`; the loss limit and `_iqr` are always written), and LShunter 1.5.0
+  the unlinked raster only with `OutUnlinked`. **Align 1.2.0** makes OUTPUT
   OUTLIER RASTER optional (written only when given; the pipeline relies on the exceedance raster
   instead): `align_input()`'s `outOutlier` keeps its position but defaults to `NOFILE`, which omits
   the keyword, and `align()` no longer requires it -- older align.exe builds stop without it. `convergence` now means the 99th

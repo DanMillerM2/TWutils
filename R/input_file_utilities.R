@@ -1759,8 +1759,11 @@ accum_input <- function(dem,
 #'   `alignGrnd`). The five outputs below need it.
 #' @param outDenOutlier OUTPUT DENSITY OUTLIER RASTER (optional).
 #' @param outLod OUTPUT LOD RASTER (optional): the loss limit; Align also
-#'   writes `<outLod>_gain`, `_centre` and `_iqr` (the IQR raster LShunter's
-#'   patch table uses).
+#'   writes `<outLod>_iqr` (the IQR raster LShunter's patch table uses).
+#' @param lodGain,lodCentre TRUE to have Align 1.4.0+ also write
+#'   `<outLod>_gain` (the gain limit) and `<outLod>_centre` (the expected dz)
+#'   (OUTPUT LOD RASTER's GAIN = YES and CENTRE = YES). FALSE, the default,
+#'   leaves them out; Align before 1.4.0 writes both regardless.
 #' @param outCenDif OUTPUT CENTERED DIFFERENCE RASTER (optional): dz minus the
 #'   expected dz, for patch depths and volumes.
 #' @param outExceed OUTPUT EXCEEDANCE PROBABILITY RASTER (optional): signed
@@ -1854,7 +1857,9 @@ align_input <- function(refDTM,
                         exceedanceTrimFraction = NULL,
                         outDX = NOFILE,
                         outDY = NOFILE,
-                        outDZ = NOFILE) {
+                        outDZ = NOFILE,
+                        lodGain = FALSE,
+                        lodCentre = FALSE) {
 
   # --- Choices, checked here so a misspelling fails before Align runs ------
   derivatives <- check_choice(derivatives, c("SIDED", "CENTRAL"), "derivatives")
@@ -2052,7 +2057,9 @@ align_input <- function(refDTM,
   if (isTRUE(outGradient)) writer$keyword("OUTPUT GRADIENT RASTER", "YES")
   writer$optional("OUTPUT CORRECTED DIFFERENCE RASTER", normalize_file_path(outCorDif))
   writer$optional("OUTPUT DENSITY OUTLIER RASTER", normalize_file_path(outDenOutlier))
-  writer$optional("OUTPUT LOD RASTER", normalize_file_path(outLod))
+  writer$optional("OUTPUT LOD RASTER", normalize_file_path(outLod),
+                  GAIN = if (isTRUE(lodGain)) "YES" else NULL,
+                  CENTRE = if (isTRUE(lodCentre)) "YES" else NULL)
   writer$optional("OUTPUT CENTERED DIFFERENCE RASTER", normalize_file_path(outCenDif))
   writer$optional("OUTPUT EXCEEDANCE PROBABILITY RASTER", normalize_file_path(outExceed))
   writer$optional("OUTPUT DX RASTER", normalize_file_path(outDX))
@@ -2303,8 +2310,10 @@ huntLSinput <- function(DEM,
 #' @param DepScourWindow,DepScourFraction Coherent loss along a path: at least
 #'   `DepScourFraction` (default 0.5) of a `DepScourWindow`-wide (m, default 5)
 #'   window at S <= threshold2.
-#' @param OutDeposits,OutUnlinked Deposit and unlinked gain-patch rasters
-#'   (default `<OutPatch>_deposits` and `<OutPatch>_unlinked`).
+#' @param OutDeposits,OutUnlinked Deposit and unlinked gain-patch rasters.
+#'   `OutDeposits` defaults to `<OutPatch>_deposits`. LShunter 1.5.0+ writes
+#'   the unlinked raster only when `OutUnlinked` is given (before 1.5.0 it
+#'   defaulted to `<OutPatch>_unlinked`); `_unlinked.csv` is always written.
 #' @param OutCorridor,OutPaths Optional diagnostic rasters: each corridor
 #'   point's scar, and each path point's distance beyond the last coherent loss.
 #'

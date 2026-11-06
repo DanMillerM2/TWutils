@@ -193,8 +193,10 @@ path ends (default 500).}
 \code{DepScourFraction} (default 0.5) of a \code{DepScourWindow}-wide (m, default 5)
 window at S <= threshold2.}
 
-\item{OutDeposits, OutUnlinked}{Deposit and unlinked gain-patch rasters
-(default \verb{<OutPatch>_deposits} and \verb{<OutPatch>_unlinked}).}
+\item{OutDeposits, OutUnlinked}{Deposit and unlinked gain-patch rasters.
+\code{OutDeposits} defaults to \verb{<OutPatch>_deposits}. LShunter 1.5.0+ writes
+the unlinked raster only when \code{OutUnlinked} is given (before 1.5.0 it
+defaulted to \verb{<OutPatch>_unlinked}); \verb{_unlinked.csv} is always written.}
 
 \item{OutCorridor, OutPaths}{Optional diagnostic rasters: each corridor
 point's scar, and each path point's distance beyond the last coherent loss.}
