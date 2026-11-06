@@ -339,7 +339,10 @@ independently and there is no compiler or CI linking them.
   (`check_choice()`), and combinations Align rejects (SELECT REPORT/CV without FIT JOINT, LoD outputs
   without `densityLod`, `densityLod` without both ground rasters) stop before it runs. `align()`
   passes them through `...`. `align_gradient_raster(refDTM, radius)` gives the path Align writes the
-  gradient to (`<refDTM>_grad<radius>m`), which LShunter requires. `convergence` now means the 99th
+  gradient to (`<refDTM>_grad<radius>m`), which LShunter requires. **Align 1.2.0** makes OUTPUT
+  OUTLIER RASTER optional (written only when given; the pipeline relies on the exceedance raster
+  instead): `align_input()`'s `outOutlier` keeps its position but defaults to `NOFILE`, which omits
+  the keyword, and `align()` no longer requires it -- older align.exe builds stop without it. `convergence` now means the 99th
   percentile change of the aligned DEM on steep ground (m; 0.005 recommended), not an RMSE change.
 - **`distance_to_road()` and `resample()` still have no Fortran source anywhere under
   `c:\work\sandbox\repos`**, so their keyword grammars can't currently be checked against source:

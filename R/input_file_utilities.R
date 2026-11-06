@@ -1675,7 +1675,10 @@ accum_input <- function(dem,
 #' @param outbins Output csv of elevation differences binned by slope and
 #'   aspect.
 #' @param outDif Output elevation-difference raster (.flt).
-#' @param outOutlier Output outlier raster (.flt).
+#' @param outOutlier Optional output outlier raster (.flt; OUTPUT OUTLIER
+#'   RASTER). Align 1.2.0+ writes it only when asked; the exceedance raster
+#'   (`outExceed`) is the change raster to use. `NOFILE` (the default) omits
+#'   the keyword, which Align versions before 1.2.0 reject.
 #' @param scratch_dir Scratch directory.
 #' @param overwrite If TRUE, allow overwriting an existing input file.
 #' @param convergence Stop iterating once the aligned DEM changes by less than
@@ -1796,7 +1799,7 @@ align_input <- function(refDTM,
                         nAzimuth,
                         outbins,
                         outDif,
-                        outOutlier,
+                        outOutlier = NOFILE,
                         scratch_dir,
                         overwrite = TRUE,
                         convergence = 0,
@@ -2045,7 +2048,7 @@ align_input <- function(refDTM,
   # --- Outputs ------------------------------------------------------------
   writer$keyword("OUTPUT DEM", normalize_file_path(outDTM))
   writer$keyword("OUTPUT DIFFERENCE RASTER", normalize_file_path(outDif))
-  writer$keyword("OUTPUT OUTLIER RASTER", normalize_file_path(outOutlier))
+  writer$optional("OUTPUT OUTLIER RASTER", normalize_file_path(outOutlier))
   if (isTRUE(outGradient)) writer$keyword("OUTPUT GRADIENT RASTER", "YES")
   writer$optional("OUTPUT CORRECTED DIFFERENCE RASTER", normalize_file_path(outCorDif))
   writer$optional("OUTPUT DENSITY OUTLIER RASTER", normalize_file_path(outDenOutlier))

@@ -24,7 +24,7 @@ align_input(
   nAzimuth,
   outbins,
   outDif,
-  outOutlier,
+  outOutlier = NOFILE,
   scratch_dir,
   overwrite = TRUE,
   convergence = 0,
@@ -128,7 +128,10 @@ aspect.}
 
 \item{outDif}{Output elevation-difference raster (.flt).}
 
-\item{outOutlier}{Output outlier raster (.flt).}
+\item{outOutlier}{Optional output outlier raster (.flt; OUTPUT OUTLIER
+RASTER). Align 1.2.0+ writes it only when asked; the exceedance raster
+(\code{outExceed}) is the change raster to use. \code{NOFILE} (the default) omits
+the keyword, which Align versions before 1.2.0 reject.}
 
 \item{scratch_dir}{Scratch directory.}
 

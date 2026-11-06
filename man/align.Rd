@@ -71,7 +71,9 @@ slope and aspect.}
 
 \item{outDif}{Character: output elevation-difference raster (.flt).}
 
-\item{outOutlier}{Character: output outlier raster (.flt).}
+\item{outOutlier}{Character: optional output outlier raster (.flt). Align
+1.2.0+ writes it only when asked; use the exceedance raster (\code{outExceed},
+through \code{...}) for change. Align versions before 1.2.0 require it.}
 
 \item{scratch_dir}{Character: scratch directory.}
 

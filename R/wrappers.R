@@ -1049,7 +1049,9 @@ resample <- function(in_raster = NOFILE,
 #' @param outbins Character: output csv of elevation differences binned by
 #'   slope and aspect.
 #' @param outDif Character: output elevation-difference raster (.flt).
-#' @param outOutlier Character: output outlier raster (.flt).
+#' @param outOutlier Character: optional output outlier raster (.flt). Align
+#'   1.2.0+ writes it only when asked; use the exceedance raster (`outExceed`,
+#'   through `...`) for change. Align versions before 1.2.0 require it.
 #' @param scratch_dir Character: scratch directory.
 #' @param executable_dir Character: directory holding the executable.
 #' @param program_name Character: base name of the executable.
@@ -1106,7 +1108,6 @@ align <- function(refDTM = NOFILE,
   check$supplied(outDTM,     "outDTM")
   check$supplied(outbins,    "outbins")
   check$supplied(outDif,     "outDif")
-  check$supplied(outOutlier, "outOutlier")
   check$directory(scratch_dir, "scratch_dir")
   check$directory(executable_dir, "executable_dir")
   check$report()
